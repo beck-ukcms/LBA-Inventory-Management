@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+ <head>
+  <base target="_top"/>
+  <?!= include_('AppCommon'); ?>
+ </head>
+ <body>
+  <header>
+   <h1>
+    <?= appConfig.appName ?>
+   </h1>
+   <p>
+    Central access to LBA Bingo operational tools and inventory administration.
+   </p>
+  </header>
+  <main>
+   <section class="screen active" id="home-screen">
+    <div class="grid">
+     <? appConfig.links.forEach(function(link){ ?>
+     <a class="tile" href="<?= link.url ?>" rel="noopener noreferrer" target="_blank">
+      <img alt="" src="<?= link.icon ?>"/>
+      <div class="tile-copy">
+       <h2>
+        <?= link.title ?>
+       </h2>
+       <p>
+        <?= link.subtitle ?>
+       </p>
+      </div>
+     </a>
+     <? }); ?>
+     <button class="tile" onclick="openAdminLogin()">
+      <div style="aspect-ratio:1;background:linear-gradient(135deg,#08275a,#075db6);display:grid;place-items:center;color:white;font-size:88px">
+       ⚙
+      </div>
+      <div class="tile-copy">
+       <h2>
+        Admin Mode
+       </h2>
+       <p>
+        Inventory reconciliation and administration.
+       </p>
+      </div>
+     </button>
+    </div>
+    <p class="muted" style="text-align:center;margin-top:24px">
+     Support:
+     <?= appConfig.supportEmail ?>
+    </p>
+   </section>
+   <?!= include_('AppAdminMain'); ?>
+   <?!= include_('AppPTReconciliation'); ?>
+   <?!= include_('AppOrdering'); ?>
+  </main>
+  <div class="modal" id="admin-login-modal">
+   <div class="modal-card">
+    <button class="close" onclick="closeModal('admin-login-modal')">
+     ×
+    </button>
+    <h2>
+     Admin Mode
+    </h2>
+    <label for="admin-code">
+     Administrative code
+    </label>
+    <input autocomplete="one-time-code" id="admin-code" inputmode="numeric" type="password"/>
+    <div class="actions" style="margin-top:16px">
+     <button class="btn" onclick="submitAdminLogin()">
+      Continue
+     </button>
+     <button class="btn secondary" onclick="closeModal('admin-login-modal')">
+      Cancel
+     </button>
+    </div>
+    <div class="status" id="login-status">
+    </div>
+   </div>
+  </div>
+  <script>
+   function openAdminLogin(){clearStatus('login-status');$('admin-code').value='';openModal('admin-login-modal');setTimeout(()=>$('admin-code').focus(),50)}
+async function submitAdminLogin(){clearStatus('login-status');try{const r=await server('authenticateAdmin',$('admin-code').value);if(!r.ok){setStatus('login-status',r.message,true);return}ADMIN_TOKEN=r.token;closeModal('admin-login-modal');showScreen('admin-screen')}catch(e){setStatus('login-status',e.message,true)}}
+$('admin-code').addEventListener('keydown',e=>{if(e.key==='Enter')submitAdminLogin()});
+  </script>
+ </body>
+</html>
+

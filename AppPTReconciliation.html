@@ -1,0 +1,714 @@
+<section
+  id="pt-reconciliation-screen"
+  class="screen"
+>
+  <div class="section-title">
+    <div>
+      <h2>PT Reconciliation</h2>
+
+      <p class="muted">
+        Compare recorded PT deals with physical inventory and correct deal
+        serial numbers or states.
+      </p>
+    </div>
+
+    <button
+      class="btn secondary"
+      type="button"
+      onclick="showScreen('admin-screen')"
+    >
+      Back
+    </button>
+  </div>
+
+
+  <div class="panel">
+    <div class="form-grid">
+      <div>
+        <label for="pt-form-select">
+          Game / Form Number
+        </label>
+
+        <select
+          id="pt-form-select"
+          onchange="loadSelectedDeals()"
+        ></select>
+      </div>
+
+      <div>
+        <label for="recon-date">
+          Reconciliation Date
+        </label>
+
+        <input
+          id="recon-date"
+          type="date"
+        >
+      </div>
+    </div>
+
+    <div class="actions" style="margin-top: 14px;">
+      <button
+        class="btn secondary"
+        type="button"
+        onclick="openModal('alternate-form-modal')"
+      >
+        Add Form # to Existing Game
+      </button>
+
+      <button
+        class="btn secondary"
+        type="button"
+        onclick="openModal('new-game-modal')"
+      >
+        Add New PT Game
+      </button>
+
+      <button
+        class="btn gold"
+        type="button"
+        onclick="addNewPhysicalDealRow()"
+      >
+        + Add Deal Found During Count
+      </button>
+    </div>
+
+    <div
+      id="pt-recon-status"
+      class="status"
+    ></div>
+  </div>
+
+
+  <div class="panel">
+    <h3>Physical Deal Review</h3>
+
+    <p class="muted">
+      Existing records may retain a blank serial, including when a missing deal
+      cannot be identified. New physical deals require a serial number.
+    </p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Deal ID</th>
+            <th>Serial Number</th>
+            <th>Recorded Status</th>
+            <th>Observed Status</th>
+            <th>Notes</th>
+            <th></th>
+          </tr>
+        </thead>
+
+        <tbody id="deal-rows"></tbody>
+      </table>
+    </div>
+
+    <div class="actions" style="margin-top: 16px;">
+      <button
+        class="btn"
+        type="button"
+        onclick="savePTReconciliationFromScreen()"
+      >
+        Save Reconciliation
+      </button>
+    </div>
+  </div>
+</section>
+
+
+<div
+  id="alternate-form-modal"
+  class="modal"
+>
+  <div class="modal-card">
+    <button
+      class="close"
+      type="button"
+      onclick="closeModal('alternate-form-modal')"
+    >
+      ×
+    </button>
+
+    <h2>Add Form # to Existing Game</h2>
+
+    <label for="alternate-game">
+      Existing Game
+    </label>
+
+    <select id="alternate-game"></select>
+
+    <label for="alternate-form-number">
+      New Alternate Form Number
+    </label>
+
+    <input id="alternate-form-number">
+
+    <div class="actions" style="margin-top: 16px;">
+      <button
+        class="btn"
+        type="button"
+        onclick="saveAlternateForm()"
+      >
+        Add Form
+      </button>
+
+      <button
+        class="btn secondary"
+        type="button"
+        onclick="closeModal('alternate-form-modal')"
+      >
+        Cancel
+      </button>
+    </div>
+
+    <div
+      id="alternate-status"
+      class="status"
+    ></div>
+  </div>
+</div>
+
+
+<div
+  id="new-game-modal"
+  class="modal"
+>
+  <div class="modal-card">
+    <button
+      class="close"
+      type="button"
+      onclick="closeModal('new-game-modal')"
+    >
+      ×
+    </button>
+
+    <h2>Add New PT Game</h2>
+
+    <div class="form-grid">
+      <div>
+        <label for="ng-name">Game Name</label>
+        <input id="ng-name">
+      </div>
+
+      <div>
+        <label for="ng-type">Game Type</label>
+        <select id="ng-type"></select>
+      </div>
+
+      <div>
+        <label for="ng-form">Primary Form Number</label>
+        <input id="ng-form">
+      </div>
+
+      <div>
+        <label for="ng-alt">Alternate Form Numbers</label>
+        <input
+          id="ng-alt"
+          placeholder="Comma separated"
+        >
+      </div>
+
+      <div>
+        <label for="ng-order">Display Order</label>
+        <input
+          id="ng-order"
+          type="number"
+          step="1"
+          value="0"
+        >
+      </div>
+
+      <div>
+        <label for="ng-cards">Cards per Deal</label>
+        <input
+          id="ng-cards"
+          type="number"
+          step="1"
+        >
+      </div>
+
+      <div>
+        <label for="ng-case">Deals per Case</label>
+        <input
+          id="ng-case"
+          type="number"
+          step="1"
+        >
+      </div>
+
+      <div>
+        <label for="ng-price">Price per Card</label>
+        <input
+          id="ng-price"
+          type="number"
+          step="0.01"
+        >
+      </div>
+
+      <div>
+        <label for="ng-payout">Payout per Deal</label>
+        <input
+          id="ng-payout"
+          type="number"
+          step="0.01"
+        >
+      </div>
+
+      <div>
+        <label for="ng-cost">Manufacturer Cost per Deal</label>
+        <input
+          id="ng-cost"
+          type="number"
+          step="0.01"
+        >
+      </div>
+
+      <div>
+        <label for="ng-target">Target On Hand</label>
+        <input
+          id="ng-target"
+          type="number"
+          step="1"
+          value="0"
+        >
+      </div>
+
+      <div>
+        <label for="ng-bundled">Target Bundled</label>
+        <input
+          id="ng-bundled"
+          type="number"
+          step="1"
+          value="0"
+        >
+      </div>
+
+      <div class="wide">
+        <label for="ng-notes">Notes</label>
+        <textarea id="ng-notes"></textarea>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button
+        class="btn"
+        type="button"
+        onclick="saveNewGame()"
+      >
+        Create Game
+      </button>
+
+      <button
+        class="btn secondary"
+        type="button"
+        onclick="closeModal('new-game-modal')"
+      >
+        Cancel
+      </button>
+    </div>
+
+    <div
+      id="new-game-status"
+      class="status"
+    ></div>
+  </div>
+</div>
+
+
+<script>
+  let PT_BOOT = {
+    forms: [],
+    statuses: [],
+    gameTypes: []
+  };
+
+
+  async function openPTReconciliation() {
+    showScreen('pt-reconciliation-screen');
+
+    $('recon-date').valueAsDate = new Date();
+    clearStatus('pt-recon-status');
+
+    try {
+      PT_BOOT = await server(
+        'getPTReconciliationBootstrap',
+        ADMIN_TOKEN
+      );
+
+      renderPTReconciliationOptions();
+      await loadSelectedDeals();
+    } catch (error) {
+      setStatus(
+        'pt-recon-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  function renderPTReconciliationOptions() {
+    populateSelectOptions(
+      'pt-form-select',
+      PT_BOOT.forms,
+      {
+        labelProperty: 'label',
+        placeholder: 'Select game/form...'
+      }
+    );
+
+    const uniqueGames = [
+      ...new Map(
+        PT_BOOT.forms.map((form) => [
+          form.gameId,
+          {
+            gameId: form.gameId,
+            gameName: form.gameName
+          }
+        ])
+      ).values()
+    ];
+
+    populateSelectOptions(
+      'alternate-game',
+      uniqueGames,
+      {
+        valueProperty: 'gameId',
+        labelProperty: 'gameName'
+      }
+    );
+
+    populatePTGameTypeDropdown(
+      PT_BOOT.gameTypes
+    );
+  }
+
+
+  function selectedPTForm() {
+    const selectedIndex = $('pt-form-select').value;
+
+    if (selectedIndex === '') {
+      return null;
+    }
+
+    return PT_BOOT.forms[Number(selectedIndex)];
+  }
+
+
+  async function loadSelectedDeals() {
+    const selectedForm = selectedPTForm();
+
+    $('deal-rows').innerHTML = '';
+
+    if (!selectedForm) {
+      return;
+    }
+
+    try {
+      const deals = await server(
+        'getPTDealsForForm',
+        ADMIN_TOKEN,
+        selectedForm.gameId,
+        selectedForm.formNumber
+      );
+
+      deals.forEach((deal) => {
+        addPTDealReviewRow(deal);
+      });
+    } catch (error) {
+      setStatus(
+        'pt-recon-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  function buildStatusOptions(selectedStatus) {
+    return PT_BOOT.statuses
+      .map((status) => {
+        const selected = status === selectedStatus
+          ? ' selected'
+          : '';
+
+        return (
+          `<option value="${escapeHtml(status)}"${selected}>` +
+          `${escapeHtml(status)}` +
+          '</option>'
+        );
+      })
+      .join('');
+  }
+
+
+  function addPTDealReviewRow(deal = {}) {
+    const row = document.createElement('tr');
+
+    const isExistingDeal = Boolean(deal.dealId);
+
+    row.dataset.dealId = deal.dealId || '';
+    row.dataset.isNew = isExistingDeal ? 'false' : 'true';
+
+    if (!isExistingDeal) {
+      row.classList.add('new-record-row');
+    }
+
+    const dealLabel = isExistingDeal
+      ? escapeHtml(deal.dealId)
+      : '<span class="pill">New Deal</span>';
+
+    const recordedStatus = isExistingDeal
+      ? escapeHtml(deal.recordedStatus)
+      : 'Not Recorded';
+
+    const initialObservedStatus = deal.recordedStatus || 'Unbundled';
+
+    row.innerHTML = `
+      <td class="deal-id">${dealLabel}</td>
+      <td>
+        <input
+          class="serial-number"
+          value="${escapeHtml(deal.serialNumber || '')}"
+          placeholder="${isExistingDeal ? 'Optional' : 'Required'}"
+        >
+      </td>
+      <td>${recordedStatus}</td>
+      <td>
+        <select class="observed-status">
+          ${buildStatusOptions(initialObservedStatus)}
+        </select>
+      </td>
+      <td>
+        <div class="existing-deal-notes muted"></div>
+
+        <input
+          class="reconciliation-notes"
+          placeholder="Append note"
+        >
+      </td>
+      <td>
+        ${isExistingDeal
+          ? ''
+          : '<button class="btn danger remove-new-deal" type="button">Remove</button>'}
+      </td>
+    `;
+
+    const existingNotesElement = row.querySelector('.existing-deal-notes');
+
+    if (existingNotesElement) {
+      existingNotesElement.textContent = deal.notes || '';
+    }
+
+    const removeButton = row.querySelector('.remove-new-deal');
+
+    if (removeButton) {
+      removeButton.addEventListener('click', () => {
+        row.remove();
+      });
+    }
+
+    $('deal-rows').appendChild(row);
+  }
+
+
+  function addNewPhysicalDealRow() {
+    const selectedForm = selectedPTForm();
+
+    if (!selectedForm) {
+      setStatus(
+        'pt-recon-status',
+        'Select a game/form before adding a physical deal.',
+        true
+      );
+      return;
+    }
+
+    addPTDealReviewRow();
+  }
+
+
+  function collectPTReconciliationRows() {
+    return [...$('deal-rows').querySelectorAll('tr')].map((row) => {
+      return {
+        dealId: row.dataset.dealId || '',
+        serialNumber: row.querySelector('.serial-number').value,
+        observedStatus: row.querySelector('.observed-status').value,
+        notes: row.querySelector('.reconciliation-notes').value
+      };
+    });
+  }
+
+
+  function validatePTReconciliationRows(rows) {
+    for (
+      let rowIndex = 0;
+      rowIndex < rows.length;
+      rowIndex += 1
+    ) {
+      const row = rows[rowIndex];
+
+      if (
+        !row.dealId &&
+        !row.serialNumber.trim()
+      ) {
+        throw new Error(
+          `New physical deal on row ${rowIndex + 1} requires a serial number.`
+        );
+      }
+    }
+  }
+
+
+  async function savePTReconciliationFromScreen() {
+    clearStatus('pt-recon-status');
+
+    const selectedForm = selectedPTForm();
+
+    if (!selectedForm) {
+      setStatus(
+        'pt-recon-status',
+        'Select a game/form.',
+        true
+      );
+      return;
+    }
+
+    const rows = collectPTReconciliationRows();
+
+    if (rows.length === 0) {
+      setStatus(
+        'pt-recon-status',
+        'No deal observations were entered.',
+        true
+      );
+      return;
+    }
+
+    try {
+      validatePTReconciliationRows(rows);
+
+      const result = await server(
+        'savePTReconciliation',
+        ADMIN_TOKEN,
+        {
+          gameId: selectedForm.gameId,
+          formNumber: selectedForm.formNumber,
+          effectiveDate: $('recon-date').value,
+          deals: rows
+        }
+      );
+
+      setStatus(
+        'pt-recon-status',
+        `Saved ${result.saved} reconciliation(s); ` +
+        `${result.unchanged} unchanged.`
+      );
+
+      await loadSelectedDeals();
+    } catch (error) {
+      setStatus(
+        'pt-recon-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  async function saveAlternateForm() {
+    clearStatus('alternate-status');
+
+    try {
+      const result = await server(
+        'addAlternateFormToGame',
+        ADMIN_TOKEN,
+        $('alternate-game').value,
+        $('alternate-form-number').value
+      );
+
+      closeModal('alternate-form-modal');
+
+      PT_BOOT = await server(
+        'getPTReconciliationBootstrap',
+        ADMIN_TOKEN
+      );
+
+      renderPTReconciliationOptions();
+
+      const selectedIndex = PT_BOOT.forms.findIndex((form) => {
+        return (
+          form.gameId === result.gameId &&
+          form.formNumber === result.formNumber
+        );
+      });
+
+      $('pt-form-select').value = String(selectedIndex);
+
+      await loadSelectedDeals();
+    } catch (error) {
+      setStatus(
+        'alternate-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  async function saveNewGame() {
+    clearStatus('new-game-status');
+
+    const payload = {
+      gameName: $('ng-name').value,
+      gameType: $('ng-type').value,
+      primaryFormNumber: $('ng-form').value,
+      alternateFormNumbers: $('ng-alt').value,
+      displayOrder: $('ng-order').value,
+      cardsPerDeal: $('ng-cards').value,
+      dealsPerCase: $('ng-case').value,
+      pricePerCard: $('ng-price').value,
+      payoutPerDeal: $('ng-payout').value,
+      manufacturerCostPerDeal: $('ng-cost').value,
+      targetOnHand: $('ng-target').value,
+      targetBundled: $('ng-bundled').value,
+      notes: $('ng-notes').value
+    };
+
+    try {
+      const result = await server(
+        'createPTGame',
+        ADMIN_TOKEN,
+        payload
+      );
+
+      closeModal('new-game-modal');
+
+      PT_BOOT = await server(
+        'getPTReconciliationBootstrap',
+        ADMIN_TOKEN
+      );
+
+      renderPTReconciliationOptions();
+
+      const selectedIndex = PT_BOOT.forms.findIndex((form) => {
+        return (
+          form.gameId === result.gameId &&
+          form.formNumber === result.formNumber
+        );
+      });
+
+      $('pt-form-select').value = String(selectedIndex);
+
+      await loadSelectedDeals();
+    } catch (error) {
+      setStatus(
+        'new-game-status',
+        error.message,
+        true
+      );
+    }
+  }
+</script>
