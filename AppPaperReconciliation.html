@@ -203,6 +203,7 @@
       : 0;
 
     const initialStatus = paperCase.recordedStatus || 'Unopened';
+    row.dataset.recordedStatus = paperCase.recordedStatus || '';
 
     row.innerHTML = `
       <td class="deal-id">
@@ -263,6 +264,11 @@
     row.querySelector('.existing-paper-notes').textContent =
       paperCase.notes || '';
 
+    const physicalPacksInput = row.querySelector('.physical-packs');
+    physicalPacksInput.addEventListener('input', () => {
+      updateSuggestedPaperStatus(row);
+    });
+
     const removeButton = row.querySelector('.remove-paper-case');
 
     if (removeButton) {
@@ -272,6 +278,37 @@
     }
 
     $('paper-case-rows').appendChild(row);
+  }
+
+
+  function updateSuggestedPaperStatus(row) {
+    const selectedPaper = selectedPaperType();
+    const packsInput = row.querySelector('.physical-packs');
+    const statusSelect = row.querySelector('.paper-observed-status');
+    const observedPacks = Number(packsInput.value);
+
+    if (
+      !selectedPaper ||
+      !Number.isInteger(observedPacks) ||
+      observedPacks < 0 ||
+      statusSelect.value === 'Missing'
+    ) {
+      return;
+    }
+
+    if (observedPacks === 0) {
+      statusSelect.value = 'Expended';
+      return;
+    }
+
+    if (observedPacks < Number(selectedPaper.packsPerCase)) {
+      statusSelect.value = 'Opened';
+      return;
+    }
+
+    if (row.dataset.recordedStatus !== 'Opened') {
+      statusSelect.value = 'Unopened';
+    }
   }
 
 

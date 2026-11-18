@@ -13,6 +13,48 @@ const PAPER_CASE_STATUSES = [
 ];
 
 
+/**
+ * Derives the required physical status from a reconciled pack count.
+ * Missing remains an explicit administrator choice. An already-opened case
+ * does not become Unopened merely because a correction restores full quantity.
+ */
+function derivePaperCaseStatus_(
+  requestedStatus,
+  recordedStatus,
+  observedPacks,
+  packsPerCase
+) {
+  if (requestedStatus === 'Missing') {
+    return 'Missing';
+  }
+  if (observedPacks === 0) {
+    return 'Expended';
+  }
+  if (observedPacks < packsPerCase) {
+    return 'Opened';
+  }
+  if (recordedStatus === 'Opened') {
+    return 'Opened';
+  }
+  return requestedStatus;
+}
+
+
+function getPaperPacksPerCase_(paperId) {
+  const paper = getPaperCatalog_().find((catalogRow) => {
+    return String(catalogRow.Paper_ID) === String(paperId);
+  });
+  if (!paper) {
+    throw new Error(`Paper type ${paperId} was not found.`);
+  }
+  return integerOrThrow_(
+    paper.Packs_Per_Case,
+    'Packs per Case',
+    { allowZero: false }
+  );
+}
+
+
 function getPaperReconciliationBootstrap(token) {
   requireAdmin_(token);
 
@@ -226,9 +268,16 @@ function reconcileExistingPaperCase_(context) {
   const recordedSerial = normalizeText_(existingCase.Serial_Number);
   const observedSerial = normalizeText_(observation.serialNumber);
   const recordedStatus = String(existingCase.Case_Status);
-  const observedStatus = normalizeText_(observation.observedStatus);
+  const requestedStatus = normalizeText_(observation.observedStatus);
   const expectedPacks = getPaperCasePackBalance_(caseId);
   const observedPacks = Number(observation.observedPacks);
+  const packsPerCase = getPaperPacksPerCase_(context.paperId);
+  const observedStatus = derivePaperCaseStatus_(
+    requestedStatus,
+    recordedStatus,
+    observedPacks,
+    packsPerCase
+  );
   const newNote = normalizeText_(observation.notes);
 
   const serialChanged = recordedSerial !== observedSerial;
@@ -348,7 +397,14 @@ function reconcileNewlyDiscoveredPaperCase_(context) {
   const observation = context.observation;
   const serialNumber = normalizeText_(observation.serialNumber);
   const observedPacks = Number(observation.observedPacks);
-  const observedStatus = normalizeText_(observation.observedStatus);
+  const requestedStatus = normalizeText_(observation.observedStatus);
+  const packsPerCase = getPaperPacksPerCase_(context.paperId);
+  const observedStatus = derivePaperCaseStatus_(
+    requestedStatus,
+    '',
+    observedPacks,
+    packsPerCase
+  );
   const notes = normalizeText_(observation.notes) ||
     'New physical Paper case discovered during inventory reconciliation.';
 

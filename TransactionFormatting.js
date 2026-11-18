@@ -1,6 +1,6 @@
 /**
  * TransactionFormatting.gs
- * LBA Bingo Inventory Management v1.9
+ * LBA Bingo Inventory Management v1.10
  *
  * Ensures Transactions.Effective_Date displays as a date and
  * Transactions.Timestamp displays full date and time.
@@ -30,7 +30,7 @@ function applyTransactionTimestampFormattingV19() {
       dataRows,
       1
     )
-    .setNumberFormat('MM/dd/yyyy');
+    .setNumberFormat('ddd mmm dd');
 
   sheet
     .getRange(
@@ -39,11 +39,18 @@ function applyTransactionTimestampFormattingV19() {
       dataRows,
       1
     )
-    .setNumberFormat('MM/dd/yyyy hh:mm:ss AM/PM');
+    .setNumberFormat('ddd mmm dd HH:mm:ss');
 
   return {
     ok: true,
-    effectiveDateFormat: 'MM/dd/yyyy',
-    timestampFormat: 'MM/dd/yyyy hh:mm:ss AM/PM'
+    effectiveDateFormat: 'ddd mmm dd',
+    timestampFormat: 'ddd mmm dd HH:mm:ss'
   };
+}
+
+
+
+/** Version-specific entry point for applying the V1.10 display formats. */
+function applyTransactionTimestampFormattingV110() {
+  return applyTransactionTimestampFormattingV19();
 }
