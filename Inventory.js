@@ -652,3 +652,71 @@ function findConflictingPTSerial_(
     );
   }) || null;
 }
+
+
+/**
+ * Returns the current pack balance for one Paper_Case_ID.
+ *
+ * Paper inventory quantity is always derived from Transactions.
+ */
+function getPaperCasePackBalance_(paperCaseId) {
+  const normalizedCaseId = normalizeText_(paperCaseId);
+
+  return getRecords_('Transactions')
+    .filter((transaction) => {
+      return (
+        String(transaction.Inventory_Type) === 'Paper' &&
+        String(transaction.Item_ID) === normalizedCaseId
+      );
+    })
+    .reduce((sum, transaction) => {
+      return sum + Number(transaction.Quantity_Change || 0);
+    }, 0);
+}
+
+
+function findPaperCaseById_(paperCaseId) {
+  const normalizedCaseId = normalizeText_(paperCaseId);
+
+  return getRecords_('Paper_Cases').find((paperCase) => {
+    return String(paperCase.Paper_Case_ID) === normalizedCaseId;
+  }) || null;
+}
+
+
+function findConflictingPaperSerial_(
+  paperId,
+  serialNumber,
+  excludedCaseId
+) {
+  const normalizedSerial = normalizeText_(serialNumber);
+  const normalizedExcludedCaseId = normalizeText_(excludedCaseId);
+
+  if (!normalizedSerial) {
+    return null;
+  }
+
+  return getRecords_('Paper_Cases').find((paperCase) => {
+    return (
+      String(paperCase.Paper_ID) === String(paperId) &&
+      String(paperCase.Paper_Case_ID) !== normalizedExcludedCaseId &&
+      normalizeText_(paperCase.Serial_Number) === normalizedSerial
+    );
+  }) || null;
+}
+
+
+function appendInventoryNote_(existingNotes, newNote) {
+  const existing = normalizeText_(existingNotes);
+  const addition = normalizeText_(newNote);
+
+  if (!addition) {
+    return existing;
+  }
+
+  if (!existing) {
+    return addition;
+  }
+
+  return `${existing}; ${addition}`;
+}

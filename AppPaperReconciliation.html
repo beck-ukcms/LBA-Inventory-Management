@@ -1,9 +1,356 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <base target="_top">
-  </head>
-  <body>
-    
-  </body>
-</html>
+<section
+  id="paper-reconciliation-screen"
+  class="screen"
+>
+  <div class="section-title">
+    <div>
+      <h2>Paper Reconciliation</h2>
+      <p class="muted">
+        Compare recorded serial-numbered paper cases with physical pack counts.
+      </p>
+    </div>
+
+    <button
+      class="btn secondary"
+      type="button"
+      onclick="showScreen('admin-screen')"
+    >
+      Back
+    </button>
+  </div>
+
+  <div class="panel">
+    <div class="form-grid">
+      <div>
+        <label for="paper-recon-type">Paper Type</label>
+        <select
+          id="paper-recon-type"
+          onchange="loadSelectedPaperCases()"
+        ></select>
+      </div>
+
+      <div>
+        <label for="paper-recon-date">Reconciliation Date</label>
+        <input
+          id="paper-recon-date"
+          type="date"
+        >
+      </div>
+    </div>
+
+    <div
+      id="paper-recon-status"
+      class="status"
+    ></div>
+
+    <div class="actions" style="margin-top: 14px;">
+      <button
+        class="btn gold"
+        type="button"
+        onclick="addNewPhysicalPaperCaseRow()"
+      >
+        + Add Case Found During Count
+      </button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Physical Case Review</h3>
+
+    <p class="muted">
+      Existing ordered cases may retain a blank serial. A newly discovered
+      physical case requires a serial number. Physical pack counts must be
+      whole numbers.
+    </p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Case ID</th>
+            <th>Serial Number</th>
+            <th>Recorded Status</th>
+            <th>Calculated Packs</th>
+            <th>Physical Packs</th>
+            <th>Observed Status</th>
+            <th>Notes</th>
+            <th></th>
+          </tr>
+        </thead>
+
+        <tbody id="paper-case-rows"></tbody>
+      </table>
+    </div>
+
+    <div class="actions" style="margin-top: 16px;">
+      <button
+        class="btn"
+        type="button"
+        onclick="savePaperReconciliationFromScreen()"
+      >
+        Save Reconciliation
+      </button>
+    </div>
+  </div>
+</section>
+
+<script>
+  let PAPER_RECON_BOOT = {
+    paperTypes: [],
+    statuses: []
+  };
+
+
+  async function openPaperReconciliation() {
+    showScreen('paper-reconciliation-screen');
+
+    $('paper-recon-date').valueAsDate = new Date();
+    clearStatus('paper-recon-status');
+
+    try {
+      PAPER_RECON_BOOT = await server(
+        'getPaperReconciliationBootstrap',
+        ADMIN_TOKEN
+      );
+
+      populateSelectOptions(
+        'paper-recon-type',
+        PAPER_RECON_BOOT.paperTypes,
+        {
+          labelProperty: 'label',
+          placeholder: 'Select paper type...'
+        }
+      );
+    } catch (error) {
+      setStatus(
+        'paper-recon-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  function selectedPaperType() {
+    const selectedIndex = $('paper-recon-type').value;
+
+    if (selectedIndex === '') {
+      return null;
+    }
+
+    return PAPER_RECON_BOOT.paperTypes[Number(selectedIndex)];
+  }
+
+
+  async function loadSelectedPaperCases() {
+    const selectedPaper = selectedPaperType();
+
+    $('paper-case-rows').innerHTML = '';
+
+    if (!selectedPaper) {
+      return;
+    }
+
+    try {
+      const cases = await server(
+        'getPaperCasesForReconciliation',
+        ADMIN_TOKEN,
+        selectedPaper.paperId
+      );
+
+      cases.forEach((paperCase) => {
+        addPaperCaseReviewRow(paperCase);
+      });
+    } catch (error) {
+      setStatus(
+        'paper-recon-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  function paperStatusOptions(selectedStatus) {
+    return PAPER_RECON_BOOT.statuses
+      .map((status) => {
+        const selected = status === selectedStatus
+          ? ' selected'
+          : '';
+
+        return (
+          `<option value="${escapeHtml(status)}"${selected}>` +
+          `${escapeHtml(status)}` +
+          '</option>'
+        );
+      })
+      .join('');
+  }
+
+
+  function addPaperCaseReviewRow(paperCase = {}) {
+    const row = document.createElement('tr');
+    const isExisting = Boolean(paperCase.caseId);
+
+    row.dataset.caseId = paperCase.caseId || '';
+
+    if (!isExisting) {
+      row.classList.add('new-record-row');
+    }
+
+    const calculatedPacks = isExisting
+      ? Number(paperCase.calculatedPacks)
+      : 0;
+
+    const initialStatus = paperCase.recordedStatus || 'Unopened';
+
+    row.innerHTML = `
+      <td class="deal-id">
+        ${isExisting
+          ? escapeHtml(paperCase.caseId)
+          : '<span class="pill">New Case</span>'}
+      </td>
+
+      <td>
+        <input
+          class="paper-serial"
+          value="${escapeHtml(paperCase.serialNumber || '')}"
+          placeholder="${isExisting ? 'Optional' : 'Required'}"
+        >
+      </td>
+
+      <td>
+        ${isExisting
+          ? escapeHtml(paperCase.recordedStatus)
+          : 'Not Recorded'}
+      </td>
+
+      <td class="calculated-packs">
+        ${calculatedPacks}
+      </td>
+
+      <td>
+        <input
+          class="physical-packs"
+          type="number"
+          min="0"
+          step="1"
+          value="${calculatedPacks}"
+        >
+      </td>
+
+      <td>
+        <select class="paper-observed-status">
+          ${paperStatusOptions(initialStatus)}
+        </select>
+      </td>
+
+      <td>
+        <div class="existing-paper-notes muted"></div>
+        <input
+          class="paper-recon-note"
+          placeholder="Append note"
+        >
+      </td>
+
+      <td>
+        ${isExisting
+          ? ''
+          : '<button class="btn danger remove-paper-case" type="button">Remove</button>'}
+      </td>
+    `;
+
+    row.querySelector('.existing-paper-notes').textContent =
+      paperCase.notes || '';
+
+    const removeButton = row.querySelector('.remove-paper-case');
+
+    if (removeButton) {
+      removeButton.addEventListener('click', () => {
+        row.remove();
+      });
+    }
+
+    $('paper-case-rows').appendChild(row);
+  }
+
+
+  function addNewPhysicalPaperCaseRow() {
+    if (!selectedPaperType()) {
+      setStatus(
+        'paper-recon-status',
+        'Select a Paper Type before adding a physical case.',
+        true
+      );
+      return;
+    }
+
+    addPaperCaseReviewRow();
+  }
+
+
+  function collectPaperReconciliationRows() {
+    return [...$('paper-case-rows').querySelectorAll('tr')].map((row) => {
+      return {
+        caseId: row.dataset.caseId || '',
+        serialNumber: row.querySelector('.paper-serial').value,
+        observedPacks: row.querySelector('.physical-packs').value,
+        observedStatus: row.querySelector('.paper-observed-status').value,
+        notes: row.querySelector('.paper-recon-note').value
+      };
+    });
+  }
+
+
+  async function savePaperReconciliationFromScreen() {
+    clearStatus('paper-recon-status');
+
+    const selectedPaper = selectedPaperType();
+
+    if (!selectedPaper) {
+      setStatus(
+        'paper-recon-status',
+        'Select a Paper Type.',
+        true
+      );
+      return;
+    }
+
+    const observations = collectPaperReconciliationRows();
+
+    if (!observations.length) {
+      setStatus(
+        'paper-recon-status',
+        'No case observations were entered.',
+        true
+      );
+      return;
+    }
+
+    try {
+      const result = await server(
+        'savePaperReconciliation',
+        ADMIN_TOKEN,
+        {
+          paperId: selectedPaper.paperId,
+          effectiveDate: $('paper-recon-date').value,
+          cases: observations
+        }
+      );
+
+      setStatus(
+        'paper-recon-status',
+        `Saved ${result.saved} reconciliation(s); ` +
+        `${result.unchanged} unchanged.`
+      );
+
+      await loadSelectedPaperCases();
+    } catch (error) {
+      setStatus(
+        'paper-recon-status',
+        error.message,
+        true
+      );
+    }
+  }
+</script>

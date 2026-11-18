@@ -1,77 +1,141 @@
-<section class="screen" id="admin-screen">
- <div class="section-title">
-  <div>
-   <h2>
-    Administration
-   </h2>
-   <p class="muted">
-    Inventory controls and system maintenance.
-   </p>
+<section
+  id="admin-screen"
+  class="screen"
+>
+  <div class="section-title">
+    <div>
+      <h2>Administration</h2>
+      <p class="muted">Inventory controls and system maintenance.</p>
+    </div>
+
+    <button
+      class="btn secondary"
+      type="button"
+      onclick="logoutAdmin()"
+    >
+      Exit Admin
+    </button>
   </div>
-  <button class="btn secondary" onclick="logoutAdmin()">
-   Exit Admin
-  </button>
- </div>
- <div class="grid">
-  <button class="tile" onclick="openPTReconciliation()">
-   <div class="tile-copy">
-    <h2>
-     PT Reconciliation
-    </h2>
-    <p>
-     Establish or correct deal-level pull-tab inventory.
-    </p>
-   </div>
-  </button>
-  <button class="tile" disabled="">
-   <div class="tile-copy">
-    <h2>
-     Paper Reconciliation
-    </h2>
-    <p>
-     Coming soon.
-    </p>
-   </div>
-  </button>
-  <button class="tile" onclick="openOrdering()">
-   <div class="tile-copy">
-    <h2>
-     Order Stock
-    </h2>
-    <p>
-     Add unidentified PT deals or paper cases.
-    </p>
-   </div>
-  </button>
-  <button class="tile" disabled="">
-   <div class="tile-copy">
-    <h2>
-     Inventory Issues
-    </h2>
-    <p>
-     Coming soon.
-    </p>
-   </div>
-  </button>
- </div>
- <div class="panel" style="margin-top:18px">
-  <h3>
-   System
-  </h3>
-  <div class="actions">
-   <button class="btn secondary" onclick="validateSchemaUI()">
-    Validate Schema
-   </button>
-   <button class="btn secondary" onclick="showScreen('home-screen')">
-    Main Menu
-   </button>
+
+  <div class="grid">
+    <button
+      class="tile"
+      type="button"
+      onclick="openPTReconciliation()"
+    >
+      <div class="tile-copy">
+        <h2>PT Reconciliation</h2>
+        <p>Establish or correct deal-level pull-tab inventory.</p>
+      </div>
+    </button>
+
+    <button
+      class="tile"
+      type="button"
+      onclick="openPaperReconciliation()"
+    >
+      <div class="tile-copy">
+        <h2>Paper Reconciliation</h2>
+        <p>Reconcile case serials and pack-level paper inventory.</p>
+      </div>
+    </button>
+
+    <button
+      class="tile"
+      type="button"
+      onclick="openOrdering()"
+    >
+      <div class="tile-copy">
+        <h2>Order Stock</h2>
+        <p>Add unidentified PT deals or paper cases.</p>
+      </div>
+    </button>
+
+    <button
+      class="tile"
+      type="button"
+      disabled
+    >
+      <div class="tile-copy">
+        <h2>Inventory Issues</h2>
+        <p>Coming soon.</p>
+      </div>
+    </button>
   </div>
-  <div class="status" id="admin-status">
+
+  <div
+    class="panel"
+    style="margin-top: 18px;"
+  >
+    <h3>System</h3>
+
+    <div class="actions">
+      <button
+        class="btn secondary"
+        type="button"
+        onclick="validateSchemaUI()"
+      >
+        Validate Schema
+      </button>
+
+      <button
+        class="btn secondary"
+        type="button"
+        onclick="showScreen('home-screen')"
+      >
+        Main Menu
+      </button>
+    </div>
+
+    <div
+      id="admin-status"
+      class="status"
+    ></div>
   </div>
- </div>
 </section>
+
 <script>
- async function validateSchemaUI(){clearStatus('admin-status');try{const r=await server('runSchemaValidationFromAdmin',ADMIN_TOKEN);setStatus('admin-status',r.valid?`Schema v${r.version} is valid. ${r.warnings.length} warning(s).`:`Validation failed: ${r.errors.join(' | ')}`,!r.valid)}catch(e){setStatus('admin-status',e.message,true)}}
-async function logoutAdmin(){try{await server('endAdminSession',ADMIN_TOKEN)}catch(e){}ADMIN_TOKEN='';showScreen('home-screen')}
+  async function validateSchemaUI() {
+    clearStatus('admin-status');
+
+    try {
+      const result = await server(
+        'runSchemaValidationFromAdmin',
+        ADMIN_TOKEN
+      );
+
+      setStatus(
+        'admin-status',
+        result.valid
+          ? `Schema v${result.version} is valid. ${result.warnings.length} warning(s).`
+          : `Validation failed: ${result.errors.join(' | ')}`,
+        !result.valid
+      );
+    } catch (error) {
+      setStatus(
+        'admin-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  async function logoutAdmin() {
+    try {
+      await server(
+        'endAdminSession',
+        ADMIN_TOKEN
+      );
+    } catch (error) {
+      console.log(
+        'Admin logout cleanup failed:',
+        error
+      );
+    }
+
+    ADMIN_TOKEN = '';
+    showScreen('home-screen');
+  }
 </script>
 
