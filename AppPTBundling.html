@@ -1,0 +1,460 @@
+<section
+  id="pt-bundling-screen"
+  class="screen"
+>
+  <div class="pt-bundling-ui">
+    <div class="section-title">
+      <div>
+        <h2>PT Bundling Receipt Tool</h2>
+        <p class="muted">
+          Scan the Form Number, then the Serial Number. Inventory is updated
+          before the receipt prints.
+        </p>
+      </div>
+
+      <button
+        class="btn secondary"
+        type="button"
+        onclick="closePTBundling()"
+      >
+        Main Menu
+      </button>
+    </div>
+
+    <div class="panel pt-bundling-card">
+      <p class="muted">
+        Connect the receipt printer and scanner to the Chromebook using the USB
+        hub. Select the receipt printer in the print dialog and click Print.
+        Text Matthew Beck (859-537-2469) with questions or problems.
+      </p>
+
+      <div class="form-grid">
+        <div>
+          <label for="pt-bundle-form">Form Number</label>
+          <input
+            id="pt-bundle-form"
+            autocomplete="off"
+            inputmode="numeric"
+            disabled
+          >
+        </div>
+
+        <div>
+          <label for="pt-bundle-serial">Serial Number</label>
+          <input
+            id="pt-bundle-serial"
+            autocomplete="off"
+            disabled
+          >
+        </div>
+      </div>
+
+      <button
+        id="pt-bundle-print"
+        class="btn"
+        type="button"
+        disabled
+        onclick="submitPTBundle()"
+      >
+        Record Bundle and Print Receipt
+      </button>
+
+      <div
+        id="pt-bundle-status"
+        class="status show"
+        aria-live="polite"
+      >
+        Select PT Processing from the main menu to load games.
+      </div>
+
+      <div
+        id="pt-bundle-match"
+        class="pt-bundle-summary"
+        hidden
+      ></div>
+    </div>
+  </div>
+
+  <section
+    id="pt-print-receipt"
+    aria-hidden="true"
+  >
+    <div class="pt-r-title">RECEIPT</div>
+    <div class="pt-r-rule"></div>
+
+    <div class="pt-r-row">
+      <div class="pt-r-key">Name:</div>
+      <div id="pt-r-name" class="pt-r-val"></div>
+    </div>
+
+    <div class="pt-r-row">
+      <div class="pt-r-key">Serial:</div>
+      <div id="pt-r-serial" class="pt-r-val"></div>
+    </div>
+
+    <div class="pt-r-row">
+      <div class="pt-r-key">Form:</div>
+      <div id="pt-r-form" class="pt-r-val"></div>
+    </div>
+
+    <div class="pt-r-row">
+      <div class="pt-r-key">Cards:</div>
+      <div id="pt-r-cards" class="pt-r-val"></div>
+    </div>
+
+    <div class="pt-r-row">
+      <div class="pt-r-key">Inventory:</div>
+      <div id="pt-r-deal-id" class="pt-r-val"></div>
+    </div>
+
+    <div class="pt-r-row">
+      <div class="pt-r-key">Date:</div>
+      <div id="pt-r-date" class="pt-r-val"></div>
+    </div>
+
+    <div class="pt-r-rule"></div>
+
+    <div class="pt-feed-line">&nbsp;</div>
+    <div class="pt-feed-line">&nbsp;</div>
+    <div class="pt-feed-line">&nbsp;</div>
+    <div class="pt-feed-line">&nbsp;</div>
+    <div class="pt-feed-line">&nbsp;</div>
+    <div class="pt-feed-line">&nbsp;</div>
+    <div class="pt-feed-line">&nbsp;</div>
+    <div class="pt-feed-line">&nbsp;</div>
+    <div class="pt-feed-line">&nbsp;</div>
+    <div class="pt-feed-line">&nbsp;</div>
+
+    <div class="pt-r-footer">Lafayette Band Association</div>
+  </section>
+</section>
+
+<style>
+  .pt-bundling-card {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  #pt-bundle-print {
+    width: 100%;
+    margin-top: 16px;
+    font-size: 16px;
+  }
+
+  .pt-bundle-summary {
+    margin-top: 18px;
+    padding: 12px;
+    border-radius: 9px;
+    background: #f6f8fb;
+    font-size: 14px;
+  }
+
+  #pt-print-receipt {
+    display: none;
+  }
+
+  @media print {
+    @page {
+      margin: 0;
+    }
+
+    html,
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+    }
+
+    body > header,
+    main > .screen:not(#pt-bundling-screen),
+    #pt-bundling-screen > .pt-bundling-ui {
+      display: none !important;
+    }
+
+    main {
+      max-width: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    #pt-bundling-screen {
+      display: block !important;
+    }
+
+    #pt-print-receipt {
+      display: block !important;
+      width: 72mm !important;
+      min-width: 0 !important;
+      max-width: 72mm !important;
+      margin: 0 !important;
+      padding: 0 2mm !important;
+      overflow: visible !important;
+      color: #000000;
+      font-family: "Courier New", monospace;
+      font-size: 11pt;
+      line-height: 1.15;
+    }
+
+    #pt-print-receipt * {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+
+    .pt-r-title {
+      margin: 0 0 2mm;
+      text-align: center;
+      font-size: 13pt;
+      font-weight: 700;
+    }
+
+    .pt-r-rule {
+      margin: 2mm 0;
+      border-top: 1px dashed #000000;
+    }
+
+    .pt-r-row {
+      display: flex;
+      margin: 1mm 0;
+    }
+
+    .pt-r-key {
+      flex: 0 0 19mm;
+      font-weight: 700;
+    }
+
+    .pt-r-val {
+      flex: 1;
+      overflow-wrap: anywhere;
+    }
+
+    .pt-feed-line {
+      height: 1em;
+    }
+
+    .pt-r-footer {
+      margin: 0;
+      text-align: center;
+      white-space: nowrap;
+      font-size: 9pt;
+      font-weight: 700;
+    }
+  }
+</style>
+
+<script>
+  const PT_BUNDLING_GAMES = new Map();
+  let PT_BUNDLING_PRINTING = false;
+
+
+  function ptBundlingKey(value) {
+    return String(value ?? '')
+      .trim()
+      .toLowerCase();
+  }
+
+
+  async function openPTBundling() {
+    showScreen('pt-bundling-screen');
+
+    PT_BUNDLING_GAMES.clear();
+    $('pt-bundle-form').disabled = true;
+    $('pt-bundle-serial').disabled = true;
+    $('pt-bundle-print').disabled = true;
+    $('pt-bundle-match').hidden = true;
+
+    setStatus(
+      'pt-bundle-status',
+      'Loading games...'
+    );
+
+    try {
+      const games = await server('getPTBundlingGames');
+
+      games.forEach((game) => {
+        const key = ptBundlingKey(game.formNumber);
+
+        if (!PT_BUNDLING_GAMES.has(key)) {
+          PT_BUNDLING_GAMES.set(key, game);
+        }
+      });
+
+      $('pt-bundle-form').disabled = false;
+      $('pt-bundle-serial').disabled = false;
+      $('pt-bundle-print').disabled = false;
+
+      setStatus(
+        'pt-bundle-status',
+        `Loaded ${games.length} game/form option(s).`
+      );
+
+      $('pt-bundle-form').focus();
+    } catch (error) {
+      setStatus(
+        'pt-bundle-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  function closePTBundling() {
+    clearPTBundlingInputs();
+    showScreen('home-screen');
+  }
+
+
+  function showPTBundlingMatch() {
+    const game = PT_BUNDLING_GAMES.get(
+      ptBundlingKey($('pt-bundle-form').value)
+    );
+
+    if (!game) {
+      $('pt-bundle-match').hidden = true;
+      return;
+    }
+
+    $('pt-bundle-match').hidden = false;
+    $('pt-bundle-match').textContent =
+      `${game.name} | Cards: ${game.cards} | Payout: ${game.payout}`;
+  }
+
+
+  async function submitPTBundle() {
+    const formNumber = $('pt-bundle-form').value.trim();
+    const serialNumber = $('pt-bundle-serial').value.trim();
+
+    if (!formNumber || !serialNumber) {
+      setStatus(
+        'pt-bundle-status',
+        'Enter both a Form Number and Serial Number.',
+        true
+      );
+
+      (!formNumber
+        ? $('pt-bundle-form')
+        : $('pt-bundle-serial'))
+        .focus();
+
+      return;
+    }
+
+    const game = PT_BUNDLING_GAMES.get(
+      ptBundlingKey(formNumber)
+    );
+
+    if (!game) {
+      setStatus(
+        'pt-bundle-status',
+        `Form Number ${formNumber} was not found.`,
+        true
+      );
+
+      $('pt-bundle-form').focus();
+      $('pt-bundle-form').select();
+      return;
+    }
+
+    $('pt-bundle-print').disabled = true;
+
+    setStatus(
+      'pt-bundle-status',
+      'Recording bundle in inventory...'
+    );
+
+    try {
+      const result = await server(
+        'bundlePTDeal',
+        formNumber,
+        serialNumber
+      );
+
+      populatePTBundlingReceipt(result);
+
+      PT_BUNDLING_PRINTING = true;
+
+      setStatus(
+        'pt-bundle-status',
+        `${result.action}. Inventory ID ${result.dealId}.`
+      );
+
+      requestAnimationFrame(() => {
+        window.print();
+      });
+    } catch (error) {
+      $('pt-bundle-print').disabled = false;
+
+      setStatus(
+        'pt-bundle-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  function populatePTBundlingReceipt(result) {
+    $('pt-r-name').textContent = result.gameName;
+    $('pt-r-serial').textContent = result.serialNumber;
+    $('pt-r-form').textContent = result.formNumber;
+    $('pt-r-cards').textContent = result.cards;
+    $('pt-r-deal-id').textContent = result.dealId;
+    $('pt-r-date').textContent = new Intl.DateTimeFormat(
+      undefined,
+      {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }
+    ).format(new Date());
+  }
+
+
+  function clearPTBundlingInputs() {
+    $('pt-bundle-form').value = '';
+    $('pt-bundle-serial').value = '';
+    $('pt-bundle-match').hidden = true;
+  }
+
+
+  function finishPTBundlingPrint() {
+    if (!PT_BUNDLING_PRINTING) {
+      return;
+    }
+
+    PT_BUNDLING_PRINTING = false;
+    clearPTBundlingInputs();
+    $('pt-bundle-print').disabled = false;
+
+    setStatus(
+      'pt-bundle-status',
+      'Ready for the next receipt.'
+    );
+
+    setTimeout(() => {
+      $('pt-bundle-form').focus();
+    }, 0);
+  }
+
+
+  $('pt-bundle-form').addEventListener(
+    'input',
+    showPTBundlingMatch
+  );
+
+  ['pt-bundle-form', 'pt-bundle-serial'].forEach((elementId) => {
+    $(elementId).addEventListener('keydown', (event) => {
+      if (
+        event.key === 'Enter' &&
+        !$('pt-bundle-print').disabled
+      ) {
+        submitPTBundle();
+      }
+    });
+  });
+
+  window.addEventListener(
+    'afterprint',
+    finishPTBundlingPrint
+  );
+</script>

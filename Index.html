@@ -17,6 +17,19 @@
    <section class="screen active" id="home-screen">
     <div class="grid">
      <? appConfig.links.forEach(function(link){ ?>
+     <? if (link.id === 'pt') { ?>
+     <button class="tile" type="button" onclick="openPTBundling()">
+      <img alt="" src="<?= link.icon ?>"/>
+      <div class="tile-copy">
+       <h2>
+        <?= link.title ?>
+       </h2>
+       <p>
+        <?= link.subtitle ?>
+       </p>
+      </div>
+     </button>
+     <? } else { ?>
      <a class="tile" href="<?= link.url ?>" rel="noopener noreferrer" target="_blank">
       <img alt="" src="<?= link.icon ?>"/>
       <div class="tile-copy">
@@ -28,6 +41,7 @@
        </p>
       </div>
      </a>
+     <? } ?>
      <? }); ?>
      <button class="tile" onclick="openAdminLogin()">
       <div style="aspect-ratio:1;background:linear-gradient(135deg,#08275a,#075db6);display:grid;place-items:center;color:white;font-size:88px">
@@ -48,6 +62,7 @@
      <?= appConfig.supportEmail ?>
     </p>
    </section>
+   <?!= include_('AppPTBundling'); ?>
    <?!= include_('AppAdminMain'); ?>
    <?!= include_('AppPTReconciliation'); ?>
    <?!= include_('AppPaperReconciliation'); ?>
