@@ -37,7 +37,12 @@ function getPTDealsForForm(
     .filter((deal) => {
       return (
         String(deal.PT_Game_ID) === String(gameId) &&
-        normalizeFormNumber_(deal.Form_Number) === normalizedFormNumber
+        normalizeFormNumber_(deal.Form_Number) === normalizedFormNumber &&
+        ![
+          'Sold',
+          'Returned',
+          'Destroyed'
+        ].includes(String(deal.Deal_Status))
       );
     })
     .map((deal) => {

@@ -90,7 +90,10 @@ function getPaperCasesForReconciliation(token, paperId) {
 
   return getRecords_('Paper_Cases')
     .filter((paperCase) => {
-      return String(paperCase.Paper_ID) === String(paperId);
+      return (
+        String(paperCase.Paper_ID) === String(paperId) &&
+        String(paperCase.Case_Status) !== 'Expended'
+      );
     })
     .map((paperCase) => {
       return {
