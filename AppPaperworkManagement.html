@@ -1,0 +1,339 @@
+<section id="paperwork-management-screen" class="screen">
+  <div class="section-title">
+    <div>
+      <h2>Paperwork Management</h2>
+      <p class="muted">
+        Daily automation with manual single-session creation and archive recovery.
+      </p>
+    </div>
+
+    <button
+      class="btn secondary"
+      type="button"
+      onclick="showScreen('home-screen')"
+    >
+      Main Menu
+    </button>
+  </div>
+
+  <div class="panel">
+    <h3>Create One Session Manually</h3>
+
+    <p>
+      Creates one Sessions entry if needed, processes outstanding past
+      paperwork, and creates exactly one paperwork set.
+    </p>
+
+    <div class="form-grid">
+      <div>
+        <label for="paperwork-session-date">Session Date</label>
+        <input id="paperwork-session-date" type="date">
+      </div>
+
+      <div>
+        <label>Session Type</label>
+
+        <label class="paperwork-radio">
+          <input
+            type="radio"
+            name="paperwork-session-type"
+            value="Thursday"
+            checked
+          >
+          Thursday
+        </label>
+
+        <label class="paperwork-radio">
+          <input
+            type="radio"
+            name="paperwork-session-type"
+            value="Friday"
+          >
+          Friday
+        </label>
+
+        <label class="paperwork-radio">
+          <input
+            type="radio"
+            name="paperwork-session-type"
+            value="Sunday"
+          >
+          Sunday
+        </label>
+      </div>
+    </div>
+
+    <button
+      class="btn"
+      type="button"
+      onclick="createManualPaperworkFromScreen()"
+    >
+      Create Manual Single Date Paperwork
+    </button>
+  </div>
+
+  <div class="panel">
+    <h3>Daily Trigger</h3>
+    <p id="paperwork-trigger-status">Loading trigger status...</p>
+
+    <div class="actions">
+      <button
+        class="btn"
+        type="button"
+        onclick="installPaperworkTriggerFromScreen()"
+      >
+        Install Daily Trigger
+      </button>
+
+      <button
+        class="btn secondary"
+        type="button"
+        onclick="removePaperworkTriggerFromScreen()"
+      >
+        Remove Daily Trigger
+      </button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Paperwork Remaining in Weekly Folders</h3>
+
+    <p class="muted">
+      A failed or interrupted inventory update remains here and will not be
+      retried automatically.
+    </p>
+
+    <div id="paperwork-groups" class="paperwork-groups">
+      Loading...
+    </div>
+
+    <button
+      class="btn danger"
+      type="button"
+      onclick="archiveSelectedPaperworkFromScreen()"
+    >
+      Process and Archive Selected Paperwork
+    </button>
+  </div>
+
+  <div
+    id="paperwork-status"
+    class="status"
+    aria-live="polite"
+  ></div>
+</section>
+
+<style>
+  .paperwork-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .paperwork-session-item,
+  .paperwork-radio {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 9px 0;
+    font-weight: 400;
+  }
+
+  .paperwork-session-item input,
+  .paperwork-radio input {
+    width: auto;
+  }
+</style>
+
+<script>
+  const PAPERWORK_DAYS = [
+    'Thursday',
+    'Friday',
+    'Sunday'
+  ];
+
+
+  async function openPaperworkManagement() {
+    showScreen('paperwork-management-screen');
+    clearStatus('paperwork-status');
+
+    try {
+      const data = await server('getPaperworkAppData');
+      renderPaperworkSessions(data.sessions);
+      renderPaperworkTrigger(data.trigger);
+    } catch (error) {
+      setStatus('paperwork-status', error.message, true);
+    }
+  }
+
+
+  function renderPaperworkTrigger(trigger) {
+    const element = $('paperwork-trigger-status');
+
+    if (trigger.installed) {
+      element.textContent =
+        `Installed: daily during hour ${trigger.hour}:00 ` +
+        `in ${trigger.timeZone}.`;
+    } else if (trigger.count > 1) {
+      element.textContent =
+        `Warning: ${trigger.count} duplicate daily triggers are installed.`;
+    } else {
+      element.textContent = 'No daily trigger is installed.';
+    }
+  }
+
+
+  function renderPaperworkSessions(sessions) {
+    const root = $('paperwork-groups');
+    root.innerHTML = '';
+
+    PAPERWORK_DAYS.forEach((day) => {
+      const group = document.createElement('div');
+      const heading = document.createElement('h4');
+      const rows = sessions[day] || [];
+
+      heading.textContent = day;
+      group.appendChild(heading);
+
+      if (!rows.length) {
+        const empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = 'No session folders found.';
+        group.appendChild(empty);
+      }
+
+      rows.forEach((row) => {
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        const text = document.createElement('span');
+
+        label.className = 'paperwork-session-item';
+        checkbox.type = 'checkbox';
+        checkbox.className = 'paperwork-archive-choice';
+        checkbox.dataset.id = row.folderId;
+        checkbox.dataset.name = row.folderName;
+        checkbox.dataset.label = row.label;
+        text.textContent = `${row.displayDate} (${row.folderName})`;
+
+        label.appendChild(checkbox);
+        label.appendChild(text);
+        group.appendChild(label);
+      });
+
+      root.appendChild(group);
+    });
+  }
+
+
+  async function createManualPaperworkFromScreen() {
+    const date = $('paperwork-session-date').value;
+    const label = document.querySelector(
+      'input[name="paperwork-session-type"]:checked'
+    ).value;
+
+    if (!date) {
+      setStatus(
+        'paperwork-status',
+        'Please select a session date.',
+        true
+      );
+      return;
+    }
+
+    setStatus(
+      'paperwork-status',
+      'Processing past paperwork and creating one session...'
+    );
+
+    try {
+      const data = await server(
+        'createManualSingleDatePaperwork',
+        date,
+        label
+      );
+
+      renderPaperworkSessions(data.sessions);
+      setStatus(
+        'paperwork-status',
+        data.creationResult.message
+      );
+    } catch (error) {
+      setStatus('paperwork-status', error.message, true);
+    }
+  }
+
+
+  async function installPaperworkTriggerFromScreen() {
+    try {
+      const trigger = await server('installDailyPaperworkTrigger');
+      renderPaperworkTrigger(trigger);
+      setStatus('paperwork-status', 'Daily trigger installed.');
+    } catch (error) {
+      setStatus('paperwork-status', error.message, true);
+    }
+  }
+
+
+  async function removePaperworkTriggerFromScreen() {
+    try {
+      const trigger = await server('removeDailyPaperworkTrigger');
+      renderPaperworkTrigger(trigger);
+      setStatus('paperwork-status', 'Daily trigger removed.');
+    } catch (error) {
+      setStatus('paperwork-status', error.message, true);
+    }
+  }
+
+
+  async function archiveSelectedPaperworkFromScreen() {
+    const items = [
+      ...document.querySelectorAll('.paperwork-archive-choice:checked')
+    ].map((checkbox) => {
+      return {
+        folderId: checkbox.dataset.id,
+        folderName: checkbox.dataset.name,
+        label: checkbox.dataset.label
+      };
+    });
+
+    if (!items.length) {
+      setStatus(
+        'paperwork-status',
+        'Select at least one session to process and archive.',
+        true
+      );
+      return;
+    }
+
+    if (!window.confirm('Process inventory and archive selected paperwork?')) {
+      return;
+    }
+
+    setStatus(
+      'paperwork-status',
+      'Processing inventory and archiving selected paperwork...'
+    );
+
+    try {
+      const data = await server('archiveSelectedPaperwork', items);
+      renderPaperworkSessions(data.sessions);
+
+      const lines = data.results.map((result) => {
+        return (
+          (result.ok ? 'OK: ' : 'ERROR: ') +
+          result.folderName + ' - ' + result.message
+        );
+      });
+
+      const hasError = data.results.some((result) => !result.ok);
+      setStatus(
+        'paperwork-status',
+        lines.join('\n'),
+        hasError
+      );
+    } catch (error) {
+      setStatus('paperwork-status', error.message, true);
+    }
+  }
+</script>

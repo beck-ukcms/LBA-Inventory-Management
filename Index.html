@@ -29,6 +29,18 @@
        </p>
       </div>
      </button>
+     <? } else if (link.id === 'paperwork') { ?>
+     <button class="tile" type="button" onclick="openPaperworkManagement()">
+      <img alt="" src="<?= link.icon ?>"/>
+      <div class="tile-copy">
+       <h2>
+        <?= link.title ?>
+       </h2>
+       <p>
+        <?= link.subtitle ?>
+       </p>
+      </div>
+     </button>
      <? } else { ?>
      <a class="tile" href="<?= link.url ?>" rel="noopener noreferrer" target="_blank">
       <img alt="" src="<?= link.icon ?>"/>
@@ -63,6 +75,7 @@
     </p>
    </section>
    <?!= include_('AppPTBundling'); ?>
+   <?!= include_('AppPaperworkManagement'); ?>
    <?!= include_('AppAdminMain'); ?>
    <?!= include_('AppPTReconciliation'); ?>
    <?!= include_('AppPaperReconciliation'); ?>
