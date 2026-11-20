@@ -197,8 +197,10 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
         'Status',
         'Reconciliation_ID',
         'Notes',
+        'Resolved_At',
+        'Resolution_Notes',
       ],
-      widths: [115, 155, 100, 175, 105, 125, 135, 135, 150, 135, 140, 150, 100, 155, 280],
+      widths: [115, 155, 100, 175, 105, 125, 135, 135, 150, 135, 140, 150, 100, 155, 280, 155, 300],
       dropdowns: {
         Inventory_Type: ['PT', 'Paper'],
         Issue_Type: ['Unknown Serial', 'Insufficient Inventory', 'Paper Type Mismatch', 'Unknown Deal', 'Duplicate Sale', 'Form Mismatch', 'Unavailable Deal'],
@@ -207,7 +209,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       checkboxes: [],
       integers: ['Expected_Quantity', 'Reported_Quantity', 'Discrepancy_Amount'],
       decimals: [], currency: [], percent: [], formulas: {},
-      timestamps: ['Timestamp'],
+      timestamps: ['Timestamp', 'Resolved_At'],
     },
 
     Reconciliation_Records: {

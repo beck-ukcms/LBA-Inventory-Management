@@ -1,0 +1,305 @@
+<section id="inventory-issues-screen" class="screen">
+  <div class="section-title">
+    <div>
+      <h2>Inventory Issues</h2>
+      <p class="muted">
+        Review recorded exceptions. Correct inventory using the appropriate
+        operational tool, then document the manual resolution here.
+      </p>
+    </div>
+
+    <button
+      class="btn secondary"
+      type="button"
+      onclick="showScreen('admin-screen')"
+    >
+      Back
+    </button>
+  </div>
+
+  <div class="panel">
+    <div class="actions">
+      <button
+        id="issues-open-tab"
+        class="btn"
+        type="button"
+        onclick="loadInventoryIssues('Open')"
+      >
+        Open
+      </button>
+
+      <button
+        id="issues-resolved-tab"
+        class="btn secondary"
+        type="button"
+        onclick="loadInventoryIssues('Resolved')"
+      >
+        Resolved
+      </button>
+
+      <button
+        id="issues-all-tab"
+        class="btn secondary"
+        type="button"
+        onclick="loadInventoryIssues('All')"
+      >
+        All
+      </button>
+    </div>
+
+    <div id="inventory-issues-status" class="status"></div>
+  </div>
+
+  <div class="panel">
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Created</th>
+            <th>Type</th>
+            <th>Issue</th>
+            <th>Product / Form</th>
+            <th>Serial</th>
+            <th>Expected</th>
+            <th>Reported</th>
+            <th>Session</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+
+        <tbody id="inventory-issues-rows"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div id="inventory-issue-review-modal" class="modal">
+  <div class="modal-card">
+    <button
+      class="close"
+      type="button"
+      onclick="closeModal('inventory-issue-review-modal')"
+    >
+      ×
+    </button>
+
+    <h2>Inventory Issue Review</h2>
+
+    <div id="inventory-issue-details"></div>
+
+    <div id="inventory-issue-resolution-panel">
+      <label for="inventory-issue-resolution-notes">
+        Resolution Notes
+      </label>
+
+      <textarea
+        id="inventory-issue-resolution-notes"
+        placeholder="Describe the manual correction or the reason this issue is resolved."
+      ></textarea>
+
+      <div class="actions">
+        <button
+          class="btn"
+          type="button"
+          onclick="resolveSelectedInventoryIssue()"
+        >
+          Mark Resolved
+        </button>
+
+        <button
+          class="btn secondary"
+          type="button"
+          onclick="closeModal('inventory-issue-review-modal')"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+
+    <div id="inventory-issue-review-status" class="status"></div>
+  </div>
+</div>
+
+<script>
+  let INVENTORY_ISSUES = [];
+  let INVENTORY_ISSUES_FILTER = 'Open';
+  let SELECTED_INVENTORY_ISSUE = null;
+
+
+  async function openInventoryIssues() {
+    showScreen('inventory-issues-screen');
+    await loadInventoryIssues('Open');
+  }
+
+
+  async function loadInventoryIssues(filter) {
+    INVENTORY_ISSUES_FILTER = filter;
+    clearStatus('inventory-issues-status');
+
+    ['Open', 'Resolved', 'All'].forEach((option) => {
+      const button = $(`issues-${option.toLowerCase()}-tab`);
+      button.className = option === filter
+        ? 'btn'
+        : 'btn secondary';
+    });
+
+    try {
+      INVENTORY_ISSUES = await server(
+        'getInventoryIssues',
+        ADMIN_TOKEN,
+        filter
+      );
+
+      renderInventoryIssues();
+    } catch (error) {
+      setStatus(
+        'inventory-issues-status',
+        error.message,
+        true
+      );
+    }
+  }
+
+
+  function renderInventoryIssues() {
+    const body = $('inventory-issues-rows');
+
+    if (!INVENTORY_ISSUES.length) {
+      body.innerHTML = `
+        <tr>
+          <td colspan="10" class="muted">
+            No ${escapeHtml(INVENTORY_ISSUES_FILTER.toLowerCase())}
+            inventory issues found.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    body.innerHTML = INVENTORY_ISSUES.map((issue) => {
+      const created = issue.timestamp
+        ? new Date(issue.timestamp).toLocaleString()
+        : '';
+
+      const product = issue.formNumber
+        ? `${issue.productLabel} (${issue.formNumber})`
+        : issue.productLabel;
+
+      return `
+        <tr>
+          <td>${escapeHtml(created)}</td>
+          <td>${escapeHtml(issue.inventoryType)}</td>
+          <td>${escapeHtml(issue.issueType)}</td>
+          <td>${escapeHtml(product)}</td>
+          <td>${escapeHtml(issue.serialNumber)}</td>
+          <td>${issue.expectedQuantity}</td>
+          <td>${issue.reportedQuantity}</td>
+          <td>${escapeHtml(issue.sessionId)}</td>
+          <td>${escapeHtml(issue.status)}</td>
+          <td>
+            <button
+              class="btn secondary"
+              type="button"
+              onclick="reviewInventoryIssue('${escapeHtml(issue.issueId)}')"
+            >
+              Review
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+
+  function reviewInventoryIssue(issueId) {
+    SELECTED_INVENTORY_ISSUE = INVENTORY_ISSUES.find((issue) => {
+      return issue.issueId === issueId;
+    }) || null;
+
+    if (!SELECTED_INVENTORY_ISSUE) {
+      setStatus(
+        'inventory-issues-status',
+        'The selected Inventory Issue could not be found.',
+        true
+      );
+      return;
+    }
+
+    const issue = SELECTED_INVENTORY_ISSUE;
+    const rows = [
+      ['Issue ID', issue.issueId],
+      ['Created', issue.timestamp ? new Date(issue.timestamp).toLocaleString() : ''],
+      ['Inventory Type', issue.inventoryType],
+      ['Issue Type', issue.issueType],
+      ['Product', issue.productLabel],
+      ['Product ID', issue.productId],
+      ['Item ID', issue.itemId],
+      ['Form Number', issue.formNumber],
+      ['Serial Number', issue.serialNumber],
+      ['Session ID', issue.sessionId],
+      ['Expected Quantity', issue.expectedQuantity],
+      ['Reported Quantity', issue.reportedQuantity],
+      ['Discrepancy', issue.discrepancyAmount],
+      ['Status', issue.status],
+      ['Reconciliation ID', issue.reconciliationId],
+      ['Original Notes', issue.notes],
+      ['Resolved At', issue.resolvedAt ? new Date(issue.resolvedAt).toLocaleString() : ''],
+      ['Resolution Notes', issue.resolutionNotes]
+    ];
+
+    $('inventory-issue-details').innerHTML = `
+      <table>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              <th>${escapeHtml(row[0])}</th>
+              <td>${escapeHtml(row[1])}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+
+    $('inventory-issue-resolution-panel').classList.toggle(
+      'hidden',
+      issue.status !== 'Open'
+    );
+
+    $('inventory-issue-resolution-notes').value = '';
+    clearStatus('inventory-issue-review-status');
+    openModal('inventory-issue-review-modal');
+  }
+
+
+  async function resolveSelectedInventoryIssue() {
+    if (!SELECTED_INVENTORY_ISSUE) {
+      return;
+    }
+
+    clearStatus('inventory-issue-review-status');
+
+    try {
+      await server(
+        'resolveInventoryIssue',
+        ADMIN_TOKEN,
+        SELECTED_INVENTORY_ISSUE.issueId,
+        $('inventory-issue-resolution-notes').value
+      );
+
+      closeModal('inventory-issue-review-modal');
+      await loadInventoryIssues(INVENTORY_ISSUES_FILTER);
+
+      setStatus(
+        'inventory-issues-status',
+        `Inventory Issue ${SELECTED_INVENTORY_ISSUE.issueId} was marked Resolved.`
+      );
+    } catch (error) {
+      setStatus(
+        'inventory-issue-review-status',
+        error.message,
+        true
+      );
+    }
+  }
+</script>

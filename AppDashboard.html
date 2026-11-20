@@ -9,9 +9,27 @@
 <script>
 let DASHBOARD_DATA={pt:[],paper:[]};
 async function openDashboard(){showScreen('dashboard-screen');clearStatus('dashboard-status');try{DASHBOARD_DATA=await server('getDashboardData');renderDashboard();}catch(e){setStatus('dashboard-status',e.message,true)}}
+function dashboardHealthClass(current, target) {
+  if (!Number(target)) {
+    return '';
+  }
+
+  const ratio = Number(current) / Number(target);
+
+  if (ratio >= 1) {
+    return 'dashboard-health-green';
+  }
+
+  if (ratio >= 0.75) {
+    return 'dashboard-health-yellow';
+  }
+
+  return 'dashboard-health-red';
+}
+
 function renderDashboard(){
- $('dashboard-pt-rows').innerHTML=DASHBOARD_DATA.pt.map(x=>`<tr><td>${escapeHtml(x.label)}</td><td>${x.onHand} (${x.targetOnHand})</td><td>${x.bundled} (${x.targetBundled})</td><td>${x.soldPerWeek.toFixed(1)}</td><td>$${x.netProfitPerDollar.toFixed(2)}</td><td><input class="dashboard-pt-order" data-id="${escapeHtml(x.gameId)}" type="number" min="0" step="1"></td></tr>`).join('');
- $('dashboard-paper-rows').innerHTML=DASHBOARD_DATA.paper.map(x=>`<tr><td>${escapeHtml(x.label)}</td><td>${x.packsOnHand} (${x.targetOnHand})</td><td>${x.soldPerWeek.toFixed(1)}</td><td>$${x.netProfitPerDollar.toFixed(2)}</td><td><input class="dashboard-paper-order" data-id="${escapeHtml(x.paperId)}" type="number" min="0" step="1"></td></tr>`).join('');
+ $('dashboard-pt-rows').innerHTML=DASHBOARD_DATA.pt.map(x=>`<tr><td>${escapeHtml(x.label)}</td><td class="${dashboardHealthClass(x.onHand,x.targetOnHand)}">${x.onHand} (${x.targetOnHand})</td><td class="${dashboardHealthClass(x.bundled,x.targetBundled)}">${x.bundled} (${x.targetBundled})</td><td>${x.soldPerWeek.toFixed(1)}</td><td>$${x.netProfitPerDollar.toFixed(2)}</td><td><input class="dashboard-pt-order" data-id="${escapeHtml(x.gameId)}" type="number" min="0" step="1"></td></tr>`).join('');
+ $('dashboard-paper-rows').innerHTML=DASHBOARD_DATA.paper.map(x=>`<tr><td>${escapeHtml(x.label)}</td><td class="${dashboardHealthClass(x.packsOnHand,x.targetOnHand)}">${x.packsOnHand} (${x.targetOnHand})</td><td>${x.soldPerWeek.toFixed(1)}</td><td>$${x.netProfitPerDollar.toFixed(2)}</td><td><input class="dashboard-paper-order" data-id="${escapeHtml(x.paperId)}" type="number" min="0" step="1"></td></tr>`).join('');
 }
 function collectDashboardOrder(){return{pt:[...document.querySelectorAll('.dashboard-pt-order')].filter(x=>Number(x.value)>0).map(x=>({gameId:x.dataset.id,quantity:Number(x.value)})),paper:[...document.querySelectorAll('.dashboard-paper-order')].filter(x=>Number(x.value)>0).map(x=>({paperId:x.dataset.id,quantity:Number(x.value)}))}}
 function reviewDashboardOrder(){const o=collectDashboardOrder();if(!o.pt.length&&!o.paper.length){setStatus('dashboard-status','Enter at least one order quantity.',true);return}const lines=[];o.pt.forEach(line=>{const x=DASHBOARD_DATA.pt.find(v=>v.gameId===line.gameId);lines.push(`${x.label}: ${line.quantity} deal(s)`)});o.paper.forEach(line=>{const x=DASHBOARD_DATA.paper.find(v=>v.paperId===line.paperId);lines.push(`${x.label}: ${line.quantity} case(s)`)});$('dashboard-order-review').innerHTML='<ul>'+lines.map(x=>`<li>${escapeHtml(x)}</li>`).join('')+'</ul>';$('dashboard-admin-code').value='';clearStatus('dashboard-order-status');openModal('dashboard-order-modal')}
