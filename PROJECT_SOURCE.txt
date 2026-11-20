@@ -7110,6 +7110,26 @@ FILE: AppDashboard.html
   <div class="actions"><button class="btn gold" type="button" onclick="reviewDashboardOrder()">Place Order</button></div>
 </section>
 <div id="dashboard-order-modal" class="modal"><div class="modal-card"><button class="close" type="button" onclick="closeModal('dashboard-order-modal')">×</button><h2>Review Order</h2><div id="dashboard-order-review"></div><label for="dashboard-admin-code">Administrative code</label><input id="dashboard-admin-code" type="password" inputmode="numeric"><div id="dashboard-order-status" class="status"></div><div class="actions"><button class="btn" type="button" onclick="submitDashboardOrder()">Place Order</button><button class="btn secondary" type="button" onclick="closeModal('dashboard-order-modal')">Cancel</button></div></div></div>
+<style>
+  #dashboard-screen td.dashboard-health-green {
+    background-color: #d9ead3;
+    color: #274e13;
+    font-weight: 700;
+  }
+
+  #dashboard-screen td.dashboard-health-yellow {
+    background-color: #fff2cc;
+    color: #7f6000;
+    font-weight: 700;
+  }
+
+  #dashboard-screen td.dashboard-health-red {
+    background-color: #f4cccc;
+    color: #990000;
+    font-weight: 700;
+  }
+</style>
+
 <script>
 let DASHBOARD_DATA={pt:[],paper:[]};
 async function openDashboard(){showScreen('dashboard-screen');clearStatus('dashboard-status');try{DASHBOARD_DATA=await server('getDashboardData');renderDashboard();}catch(e){setStatus('dashboard-status',e.message,true)}}
