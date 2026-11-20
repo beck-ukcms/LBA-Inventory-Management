@@ -55,6 +55,10 @@
      </a>
      <? } ?>
      <? }); ?>
+     <button class="tile" type="button" onclick="openDashboard()">
+      <div style="aspect-ratio:1;background:linear-gradient(135deg,#155b25,#6aa84f);display:grid;place-items:center;color:white;font-size:72px">▦</div>
+      <div class="tile-copy"><h2>Inventory Dashboard</h2><p>Review active inventory and place the weekly order.</p></div>
+     </button>
      <button class="tile" onclick="openAdminLogin()">
       <div style="aspect-ratio:1;background:linear-gradient(135deg,#08275a,#075db6);display:grid;place-items:center;color:white;font-size:88px">
        ⚙
@@ -75,8 +79,12 @@
     </p>
    </section>
    <?!= include_('AppPTBundling'); ?>
+   <?!= include_('AppDashboard'); ?>
+   <?!= include_('AppDashboard'); ?>
    <?!= include_('AppPaperworkManagement'); ?>
    <?!= include_('AppAdminMain'); ?>
+   <?!= include_('AppReconciliation'); ?>
+   <?!= include_('AppCatalogMaintenance'); ?>
    <?!= include_('AppPTReconciliation'); ?>
    <?!= include_('AppPaperReconciliation'); ?>
    <?!= include_('AppOrdering'); ?>

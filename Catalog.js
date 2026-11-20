@@ -277,3 +277,56 @@ function createPaperType(token, payload) {
   };
 }
 
+function getCatalogMaintenanceData(token) {
+  requireAdmin_(token);
+  return {
+    pt: getPTCatalog_().map((g) => ({
+      gameId:String(g.PT_Game_ID), gameName:String(g.Game_Name), gameType:String(g.Game_Type),
+      primaryFormNumber:String(g.Primary_Form_Number), alternateFormNumbers:String(g.Alternate_Form_Numbers || ''),
+      active:isActiveCatalogRecord_(g), displayOrder:Number(g.Display_Order||0), cardsPerDeal:Number(g.Cards_Per_Deal||0),
+      dealsPerCase:Number(g.Deals_Per_Case||0), pricePerCard:Number(g.Price_Per_Card||0), payoutPerDeal:Number(g.Payout_Per_Deal||0),
+      manufacturerCostPerDeal:Number(g.Manufacturer_Cost_Per_Deal||0), targetOnHand:Number(g.Target_On_Hand||0),
+      targetBundled:Number(g.Target_Bundled||0), notes:String(g.Notes||''), label:`${g.Game_Name} (${g.Primary_Form_Number})`
+    })),
+    paper: getPaperCatalog_().map((p) => ({
+      paperId:String(p.Paper_ID), shortName:String(p.Short_Name), description:String(p.Description), active:isActiveCatalogRecord_(p),
+      displayOrder:Number(p.Display_Order||0), packsPerBox:Number(p.Packs_Per_Box||0), boxesPerCase:Number(p.Boxes_Per_Case||0),
+      manufacturerCostPerCase:Number(p.Manufacturer_Cost_Per_Case||0), salesPricePerPack:Number(p.Sales_Price_Per_Pack||0),
+      targetOnHand:Number(p.Target_On_Hand||0), notes:String(p.Notes||''), label:`${p.Short_Name} - ${p.Description}`
+    })), gameTypes: PT_GAME_TYPES
+  };
+}
+
+function updatePTGame(token, payload) {
+  requireAdmin_(token); payload=payload||{};
+  const game=getPTCatalog_().find(g=>String(g.PT_Game_ID)===String(payload.gameId));
+  if(!game) throw new Error('PT game was not found.');
+  const primary=assertFormAvailable_(payload.primaryFormNumber,game.PT_Game_ID);
+  const alts=splitAlternateForms_(payload.alternateFormNumbers); alts.forEach(f=>assertFormAvailable_(f,game.PT_Game_ID));
+  const cards=integerOrThrow_(payload.cardsPerDeal,'Cards per Deal',{allowZero:false});
+  const deals=integerOrThrow_(payload.dealsPerCase,'Deals per Case',{allowZero:false});
+  const price=numberOrThrow_(payload.pricePerCard,'Price per Card'); const payout=numberOrThrow_(payload.payoutPerDeal,'Payout per Deal');
+  const cost=numberOrThrow_(payload.manufacturerCostPerDeal,'Manufacturer Cost per Deal'); const gross=cards*price; const net=gross-payout-cost;
+  updateRecordRow_('PT_Catalog',game._rowNumber,{Game_Name:normalizeText_(payload.gameName),Game_Type:payload.gameType,Primary_Form_Number:primary,
+    Alternate_Form_Numbers:alts.join(', '),Active:Boolean(payload.active),Display_Order:integerOrThrow_(payload.displayOrder,'Display Order'),
+    Cards_Per_Deal:cards,Deals_Per_Case:deals,Price_Per_Card:price,Payout_Per_Deal:payout,Manufacturer_Cost_Per_Deal:cost,
+    Gross_Receipts_Per_Deal:gross,Gaming_Income_Before_Cost:gross-payout,Net_Income_Per_Deal:net,
+    Net_Income_Per_Patron_Dollar:gross?net/gross:0,Manufacturer_Cost_Per_Patron_Dollar:gross?cost/gross:0,
+    Manufacturer_Cost_Per_Case:cost*deals,Target_On_Hand:integerOrThrow_(payload.targetOnHand,'Target On Hand'),
+    Target_Bundled:integerOrThrow_(payload.targetBundled,'Target Bundled'),Notes:normalizeText_(payload.notes)});
+  return {ok:true};
+}
+
+function updatePaperType(token,payload){
+  requireAdmin_(token); payload=payload||{}; const paper=getPaperCatalog_().find(p=>String(p.Paper_ID)===String(payload.paperId));
+  if(!paper) throw new Error('Paper type was not found.');
+  const ppb=numberOrThrow_(payload.packsPerBox,'Packs per Box'); const bpc=integerOrThrow_(payload.boxesPerCase,'Boxes per Case',{allowZero:false});
+  const ppc=ppb*bpc; if(!Number.isInteger(ppc)) throw new Error('Packs per case must be a whole number.');
+  const cost=numberOrThrow_(payload.manufacturerCostPerCase,'Manufacturer Cost per Case'); const price=numberOrThrow_(payload.salesPricePerPack,'Sales Price per Pack');
+  const cpp=ppc?cost/ppc:0; const net=price-cpp;
+  updateRecordRow_('Paper_Catalog',paper._rowNumber,{Short_Name:normalizeText_(payload.shortName).toUpperCase(),Description:normalizeText_(payload.description),
+    Active:Boolean(payload.active),Display_Order:integerOrThrow_(payload.displayOrder,'Display Order'),Packs_Per_Box:ppb,Boxes_Per_Case:bpc,Packs_Per_Case:ppc,
+    Manufacturer_Cost_Per_Case:cost,Manufacturer_Cost_Per_Pack:cpp,Sales_Price_Per_Pack:price,Net_Income_Per_Pack:net,
+    Net_Income_Per_Patron_Dollar:price?net/price:0,Manufacturer_Cost_Per_Patron_Dollar:price?cpp/price:0,
+    Target_On_Hand:integerOrThrow_(payload.targetOnHand,'Target On Hand'),Notes:normalizeText_(payload.notes)}); return {ok:true};
+}

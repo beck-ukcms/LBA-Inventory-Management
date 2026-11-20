@@ -1,0 +1,34 @@
+diff --git a/PTReconciliation.js b/PTReconciliation.js
+index 79612f8..0086211 100644
+--- a/PTReconciliation.js
++++ b/PTReconciliation.js
+@@ -37,7 +37,12 @@ function getPTDealsForForm(
+     .filter((deal) => {
+       return (
+         String(deal.PT_Game_ID) === String(gameId) &&
+-        normalizeFormNumber_(deal.Form_Number) === normalizedFormNumber
++        normalizeFormNumber_(deal.Form_Number) === normalizedFormNumber &&
++        ![
++          'Sold',
++          'Returned',
++          'Destroyed'
++        ].includes(String(deal.Deal_Status))
+       );
+     })
+     .map((deal) => {
+diff --git a/PaperReconciliation.js b/PaperReconciliation.js
+index 1c5df9c..10766f1 100644
+--- a/PaperReconciliation.js
++++ b/PaperReconciliation.js
+@@ -90,7 +90,10 @@ function getPaperCasesForReconciliation(token, paperId) {
+ 
+   return getRecords_('Paper_Cases')
+     .filter((paperCase) => {
+-      return String(paperCase.Paper_ID) === String(paperId);
++      return (
++        String(paperCase.Paper_ID) === String(paperId) &&
++        String(paperCase.Case_Status) !== 'Expended'
++      );
+     })
+     .map((paperCase) => {
+       return {

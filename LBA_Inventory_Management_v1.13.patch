@@ -1,0 +1,350 @@
+diff --git a/AppAdminMain.html b/AppAdminMain.html
+index faba9a2..a9915aa 100644
+--- a/AppAdminMain.html
++++ b/AppAdminMain.html
+@@ -18,51 +18,11 @@
+   </div>
+ 
+   <div class="grid">
+-    <button
+-      class="tile"
+-      type="button"
+-      onclick="openPTReconciliation()"
+-    >
+-      <div class="tile-copy">
+-        <h2>PT Reconciliation</h2>
+-        <p>Establish or correct deal-level pull-tab inventory.</p>
+-      </div>
+-    </button>
+-
+-    <button
+-      class="tile"
+-      type="button"
+-      onclick="openPaperReconciliation()"
+-    >
+-      <div class="tile-copy">
+-        <h2>Paper Reconciliation</h2>
+-        <p>Reconcile case serials and pack-level paper inventory.</p>
+-      </div>
+-    </button>
+-
+-    <button
+-      class="tile"
+-      type="button"
+-      onclick="openOrdering()"
+-    >
+-      <div class="tile-copy">
+-        <h2>Order Stock</h2>
+-        <p>Add unidentified PT deals or paper cases.</p>
+-      </div>
+-    </button>
+-
+-    <button
+-      class="tile"
+-      type="button"
+-      disabled
+-    >
+-      <div class="tile-copy">
+-        <h2>Inventory Issues</h2>
+-        <p>Coming soon.</p>
+-      </div>
+-    </button>
++    <button class="tile" type="button" onclick="openOrdering()"><div class="tile-copy"><h2>Order Stock</h2><p>Add unidentified PT deals or paper cases.</p></div></button>
++    <button class="tile" type="button" onclick="openReconciliation()"><div class="tile-copy"><h2>Reconciliation</h2><p>Reconcile PT and Paper physical inventory.</p></div></button>
++    <button class="tile" type="button" onclick="openCatalogMaintenance()"><div class="tile-copy"><h2>Catalog Maintenance</h2><p>Maintain PT and Paper product catalogs.</p></div></button>
++    <button class="tile" type="button" disabled><div class="tile-copy"><h2>Inventory Issues</h2><p>Coming soon.</p></div></button>
+   </div>
+-
+   <div
+     class="panel"
+     style="margin-top: 18px;"
+diff --git a/AppCatalogMaintenance.html b/AppCatalogMaintenance.html
+new file mode 100644
+index 0000000..e40313f
+--- /dev/null
++++ b/AppCatalogMaintenance.html
+@@ -0,0 +1,16 @@
++<section id="catalog-maintenance-screen" class="screen">
++ <div class="section-title"><div><h2>Catalog Maintenance</h2><p class="muted">Edit active and inactive PT and Paper products.</p></div><button class="btn secondary" onclick="showScreen('admin-screen')">Back</button></div>
++ <div class="panel"><div class="actions"><button id="cat-pt-tab" class="btn" onclick="showCatalogType('pt')">Pulltabs</button><button id="cat-paper-tab" class="btn secondary" onclick="showCatalogType('paper')">Paper</button></div><div id="catalog-status" class="status"></div></div>
++ <div id="cat-pt-panel" class="panel"><label>Game / Form</label><input id="cat-pt-search" list="cat-pt-list" autocomplete="off" onchange="loadCatalogPT()"><datalist id="cat-pt-list"></datalist><div id="cat-pt-fields" class="form-grid"></div><button class="btn" onclick="saveCatalogPT()">Save PT Game</button></div>
++ <div id="cat-paper-panel" class="panel hidden"><label>Paper Type</label><input id="cat-paper-search" list="cat-paper-list" autocomplete="off" onchange="loadCatalogPaper()"><datalist id="cat-paper-list"></datalist><div id="cat-paper-fields" class="form-grid"></div><button class="btn" onclick="saveCatalogPaper()">Save Paper Type</button></div>
++</section>
++<script>
++let CATALOG_DATA={pt:[],paper:[],gameTypes:[]},CAT_PT=null,CAT_PAPER=null;
++async function openCatalogMaintenance(){showScreen('catalog-maintenance-screen');CATALOG_DATA=await server('getCatalogMaintenanceData',ADMIN_TOKEN);$('cat-pt-list').innerHTML=CATALOG_DATA.pt.map(x=>`<option value="${escapeHtml(x.label)}"></option>`).join('');$('cat-paper-list').innerHTML=CATALOG_DATA.paper.map(x=>`<option value="${escapeHtml(x.label)}"></option>`).join('');showCatalogType('pt')}
++function showCatalogType(t){$('cat-pt-panel').classList.toggle('hidden',t!=='pt');$('cat-paper-panel').classList.toggle('hidden',t!=='paper');$('cat-pt-tab').className=t==='pt'?'btn':'btn secondary';$('cat-paper-tab').className=t==='paper'?'btn':'btn secondary'}
++function field(id,label,value,type='text'){return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" value="${escapeHtml(value)}"></div>`}
++function loadCatalogPT(){CAT_PT=CATALOG_DATA.pt.find(x=>x.label===$('cat-pt-search').value)||null;if(!CAT_PT)return;$('cat-pt-fields').innerHTML=field('cpt-name','Game Name',CAT_PT.gameName)+field('cpt-type','Game Type',CAT_PT.gameType)+field('cpt-form','Primary Form',CAT_PT.primaryFormNumber)+field('cpt-alt','Alternate Forms',CAT_PT.alternateFormNumbers)+field('cpt-order','Display Order',CAT_PT.displayOrder,'number')+field('cpt-cards','Cards per Deal',CAT_PT.cardsPerDeal,'number')+field('cpt-case','Deals per Case',CAT_PT.dealsPerCase,'number')+field('cpt-price','Price per Card',CAT_PT.pricePerCard,'number')+field('cpt-payout','Payout per Deal',CAT_PT.payoutPerDeal,'number')+field('cpt-cost','Manufacturer Cost per Deal',CAT_PT.manufacturerCostPerDeal,'number')+field('cpt-target','Target On Hand',CAT_PT.targetOnHand,'number')+field('cpt-bundled','Target Bundled',CAT_PT.targetBundled,'number')+field('cpt-notes','Notes',CAT_PT.notes)+`<div><label><input id="cpt-active" type="checkbox" ${CAT_PT.active?'checked':''}> Active</label></div>`}
++async function saveCatalogPT(){if(!CAT_PT)return;const v=id=>$(id).value;await server('updatePTGame',ADMIN_TOKEN,{gameId:CAT_PT.gameId,gameName:v('cpt-name'),gameType:v('cpt-type'),primaryFormNumber:v('cpt-form'),alternateFormNumbers:v('cpt-alt'),displayOrder:v('cpt-order'),cardsPerDeal:v('cpt-cards'),dealsPerCase:v('cpt-case'),pricePerCard:v('cpt-price'),payoutPerDeal:v('cpt-payout'),manufacturerCostPerDeal:v('cpt-cost'),targetOnHand:v('cpt-target'),targetBundled:v('cpt-bundled'),notes:v('cpt-notes'),active:$('cpt-active').checked});setStatus('catalog-status','PT game saved.')}
++function loadCatalogPaper(){CAT_PAPER=CATALOG_DATA.paper.find(x=>x.label===$('cat-paper-search').value)||null;if(!CAT_PAPER)return;$('cat-paper-fields').innerHTML=field('cp-short','Short Name',CAT_PAPER.shortName)+field('cp-desc','Description',CAT_PAPER.description)+field('cp-order','Display Order',CAT_PAPER.displayOrder,'number')+field('cp-packbox','Packs per Box',CAT_PAPER.packsPerBox,'number')+field('cp-boxcase','Boxes per Case',CAT_PAPER.boxesPerCase,'number')+field('cp-cost','Manufacturer Cost per Case',CAT_PAPER.manufacturerCostPerCase,'number')+field('cp-price','Sales Price per Pack',CAT_PAPER.salesPricePerPack,'number')+field('cp-target','Target On Hand',CAT_PAPER.targetOnHand,'number')+field('cp-notes','Notes',CAT_PAPER.notes)+`<div><label><input id="cp-active" type="checkbox" ${CAT_PAPER.active?'checked':''}> Active</label></div>`}
++async function saveCatalogPaper(){if(!CAT_PAPER)return;const v=id=>$(id).value;await server('updatePaperType',ADMIN_TOKEN,{paperId:CAT_PAPER.paperId,shortName:v('cp-short'),description:v('cp-desc'),displayOrder:v('cp-order'),packsPerBox:v('cp-packbox'),boxesPerCase:v('cp-boxcase'),manufacturerCostPerCase:v('cp-cost'),salesPricePerPack:v('cp-price'),targetOnHand:v('cp-target'),notes:v('cp-notes'),active:$('cp-active').checked});setStatus('catalog-status','Paper type saved.')}
++</script>
+diff --git a/AppDashboard.html b/AppDashboard.html
+new file mode 100644
+index 0000000..afb1f9f
+--- /dev/null
++++ b/AppDashboard.html
+@@ -0,0 +1,19 @@
++<section id="dashboard-screen" class="screen">
++  <div class="section-title"><div><h2>Inventory Dashboard</h2><p class="muted">Active products, rolling sales, and weekly ordering.</p></div><button class="btn secondary" type="button" onclick="showScreen('home-screen')">Main Menu</button></div>
++  <div id="dashboard-status" class="status"></div>
++  <div class="panel"><h3>Pulltabs</h3><p class="muted">Sold/Week is normalized to three sessions per week using the most recent ten successfully processed sessions.</p><div class="table-scroll"><table><thead><tr><th>Game (Form #)</th><th>On Hand (Target)</th><th>Bundled (Target)</th><th>Sold/Week</th><th>Net Profit/$</th><th>Deals to Order</th></tr></thead><tbody id="dashboard-pt-rows"></tbody></table></div></div>
++  <div class="panel"><h3>Paper</h3><div class="table-scroll"><table><thead><tr><th>Paper</th><th>Packs On Hand (Target)</th><th>Sold/Week</th><th>Net Profit/$</th><th>Cases to Order</th></tr></thead><tbody id="dashboard-paper-rows"></tbody></table></div></div>
++  <div class="actions"><button class="btn gold" type="button" onclick="reviewDashboardOrder()">Place Order</button></div>
++</section>
++<div id="dashboard-order-modal" class="modal"><div class="modal-card"><button class="close" type="button" onclick="closeModal('dashboard-order-modal')">×</button><h2>Review Order</h2><div id="dashboard-order-review"></div><label for="dashboard-admin-code">Administrative code</label><input id="dashboard-admin-code" type="password" inputmode="numeric"><div id="dashboard-order-status" class="status"></div><div class="actions"><button class="btn" type="button" onclick="submitDashboardOrder()">Place Order</button><button class="btn secondary" type="button" onclick="closeModal('dashboard-order-modal')">Cancel</button></div></div></div>
++<script>
++let DASHBOARD_DATA={pt:[],paper:[]};
++async function openDashboard(){showScreen('dashboard-screen');clearStatus('dashboard-status');try{DASHBOARD_DATA=await server('getDashboardData');renderDashboard();}catch(e){setStatus('dashboard-status',e.message,true)}}
++function renderDashboard(){
++ $('dashboard-pt-rows').innerHTML=DASHBOARD_DATA.pt.map(x=>`<tr><td>${escapeHtml(x.label)}</td><td>${x.onHand} (${x.targetOnHand})</td><td>${x.bundled} (${x.targetBundled})</td><td>${x.soldPerWeek.toFixed(1)}</td><td>$${x.netProfitPerDollar.toFixed(2)}</td><td><input class="dashboard-pt-order" data-id="${escapeHtml(x.gameId)}" type="number" min="0" step="1"></td></tr>`).join('');
++ $('dashboard-paper-rows').innerHTML=DASHBOARD_DATA.paper.map(x=>`<tr><td>${escapeHtml(x.label)}</td><td>${x.packsOnHand} (${x.targetOnHand})</td><td>${x.soldPerWeek.toFixed(1)}</td><td>$${x.netProfitPerDollar.toFixed(2)}</td><td><input class="dashboard-paper-order" data-id="${escapeHtml(x.paperId)}" type="number" min="0" step="1"></td></tr>`).join('');
++}
++function collectDashboardOrder(){return{pt:[...document.querySelectorAll('.dashboard-pt-order')].filter(x=>Number(x.value)>0).map(x=>({gameId:x.dataset.id,quantity:Number(x.value)})),paper:[...document.querySelectorAll('.dashboard-paper-order')].filter(x=>Number(x.value)>0).map(x=>({paperId:x.dataset.id,quantity:Number(x.value)}))}}
++function reviewDashboardOrder(){const o=collectDashboardOrder();if(!o.pt.length&&!o.paper.length){setStatus('dashboard-status','Enter at least one order quantity.',true);return}const lines=[];o.pt.forEach(line=>{const x=DASHBOARD_DATA.pt.find(v=>v.gameId===line.gameId);lines.push(`${x.label}: ${line.quantity} deal(s)`)});o.paper.forEach(line=>{const x=DASHBOARD_DATA.paper.find(v=>v.paperId===line.paperId);lines.push(`${x.label}: ${line.quantity} case(s)`)});$('dashboard-order-review').innerHTML='<ul>'+lines.map(x=>`<li>${escapeHtml(x)}</li>`).join('')+'</ul>';$('dashboard-admin-code').value='';clearStatus('dashboard-order-status');openModal('dashboard-order-modal')}
++async function submitDashboardOrder(){try{const result=await server('placeDashboardOrder',$('dashboard-admin-code').value,collectDashboardOrder());closeModal('dashboard-order-modal');setStatus('dashboard-status',`Order placed: ${result.ptDeals} PT deal(s), ${result.paperCases} Paper case(s).`);await openDashboard()}catch(e){setStatus('dashboard-order-status',e.message,true)}}
++</script>
+diff --git a/AppReconciliation.html b/AppReconciliation.html
+new file mode 100644
+index 0000000..7d8305a
+--- /dev/null
++++ b/AppReconciliation.html
+@@ -0,0 +1,2 @@
++<section id="reconciliation-screen" class="screen"><div class="section-title"><div><h2>Reconciliation</h2><p class="muted">PT and Paper physical inventory.</p></div><button class="btn secondary" onclick="showScreen('admin-screen')">Back</button></div><div class="panel"><div class="actions"><button class="btn" onclick="openPTReconciliation()">Pulltabs</button><button class="btn" onclick="openPaperReconciliation()">Paper</button></div><p class="muted">Choose an inventory type to open its reconciliation workspace.</p></div></section>
++<script>function openReconciliation(){showScreen('reconciliation-screen')}</script>
+diff --git a/Catalog.js b/Catalog.js
+index 5f0bc5e..f891f57 100644
+--- a/Catalog.js
++++ b/Catalog.js
+@@ -276,3 +276,57 @@ function createPaperType(token, payload) {
+     createdPaper: createdPaper
+   };
+ }
++
++function getCatalogMaintenanceData(token) {
++  requireAdmin_(token);
++  return {
++    pt: getPTCatalog_().map((g) => ({
++      gameId:String(g.PT_Game_ID), gameName:String(g.Game_Name), gameType:String(g.Game_Type),
++      primaryFormNumber:String(g.Primary_Form_Number), alternateFormNumbers:String(g.Alternate_Form_Numbers || ''),
++      active:isActiveCatalogRecord_(g), displayOrder:Number(g.Display_Order||0), cardsPerDeal:Number(g.Cards_Per_Deal||0),
++      dealsPerCase:Number(g.Deals_Per_Case||0), pricePerCard:Number(g.Price_Per_Card||0), payoutPerDeal:Number(g.Payout_Per_Deal||0),
++      manufacturerCostPerDeal:Number(g.Manufacturer_Cost_Per_Deal||0), targetOnHand:Number(g.Target_On_Hand||0),
++      targetBundled:Number(g.Target_Bundled||0), notes:String(g.Notes||''), label:`${g.Game_Name} (${g.Primary_Form_Number})`
++    })),
++    paper: getPaperCatalog_().map((p) => ({
++      paperId:String(p.Paper_ID), shortName:String(p.Short_Name), description:String(p.Description), active:isActiveCatalogRecord_(p),
++      displayOrder:Number(p.Display_Order||0), packsPerBox:Number(p.Packs_Per_Box||0), boxesPerCase:Number(p.Boxes_Per_Case||0),
++      manufacturerCostPerCase:Number(p.Manufacturer_Cost_Per_Case||0), salesPricePerPack:Number(p.Sales_Price_Per_Pack||0),
++      targetOnHand:Number(p.Target_On_Hand||0), notes:String(p.Notes||''), label:`${p.Short_Name} - ${p.Description}`
++    })), gameTypes: PT_GAME_TYPES
++  };
++}
++
++function updatePTGame(token, payload) {
++  requireAdmin_(token); payload=payload||{};
++  const game=getPTCatalog_().find(g=>String(g.PT_Game_ID)===String(payload.gameId));
++  if(!game) throw new Error('PT game was not found.');
++  const primary=assertFormAvailable_(payload.primaryFormNumber,game.PT_Game_ID);
++  const alts=splitAlternateForms_(payload.alternateFormNumbers); alts.forEach(f=>assertFormAvailable_(f,game.PT_Game_ID));
++  const cards=integerOrThrow_(payload.cardsPerDeal,'Cards per Deal',{allowZero:false});
++  const deals=integerOrThrow_(payload.dealsPerCase,'Deals per Case',{allowZero:false});
++  const price=numberOrThrow_(payload.pricePerCard,'Price per Card'); const payout=numberOrThrow_(payload.payoutPerDeal,'Payout per Deal');
++  const cost=numberOrThrow_(payload.manufacturerCostPerDeal,'Manufacturer Cost per Deal'); const gross=cards*price; const net=gross-payout-cost;
++  updateRecordRow_('PT_Catalog',game._rowNumber,{Game_Name:normalizeText_(payload.gameName),Game_Type:payload.gameType,Primary_Form_Number:primary,
++    Alternate_Form_Numbers:alts.join(', '),Active:Boolean(payload.active),Display_Order:integerOrThrow_(payload.displayOrder,'Display Order'),
++    Cards_Per_Deal:cards,Deals_Per_Case:deals,Price_Per_Card:price,Payout_Per_Deal:payout,Manufacturer_Cost_Per_Deal:cost,
++    Gross_Receipts_Per_Deal:gross,Gaming_Income_Before_Cost:gross-payout,Net_Income_Per_Deal:net,
++    Net_Income_Per_Patron_Dollar:gross?net/gross:0,Manufacturer_Cost_Per_Patron_Dollar:gross?cost/gross:0,
++    Manufacturer_Cost_Per_Case:cost*deals,Target_On_Hand:integerOrThrow_(payload.targetOnHand,'Target On Hand'),
++    Target_Bundled:integerOrThrow_(payload.targetBundled,'Target Bundled'),Notes:normalizeText_(payload.notes)});
++  return {ok:true};
++}
++
++function updatePaperType(token,payload){
++  requireAdmin_(token); payload=payload||{}; const paper=getPaperCatalog_().find(p=>String(p.Paper_ID)===String(payload.paperId));
++  if(!paper) throw new Error('Paper type was not found.');
++  const ppb=numberOrThrow_(payload.packsPerBox,'Packs per Box'); const bpc=integerOrThrow_(payload.boxesPerCase,'Boxes per Case',{allowZero:false});
++  const ppc=ppb*bpc; if(!Number.isInteger(ppc)) throw new Error('Packs per case must be a whole number.');
++  const cost=numberOrThrow_(payload.manufacturerCostPerCase,'Manufacturer Cost per Case'); const price=numberOrThrow_(payload.salesPricePerPack,'Sales Price per Pack');
++  const cpp=ppc?cost/ppc:0; const net=price-cpp;
++  updateRecordRow_('Paper_Catalog',paper._rowNumber,{Short_Name:normalizeText_(payload.shortName).toUpperCase(),Description:normalizeText_(payload.description),
++    Active:Boolean(payload.active),Display_Order:integerOrThrow_(payload.displayOrder,'Display Order'),Packs_Per_Box:ppb,Boxes_Per_Case:bpc,Packs_Per_Case:ppc,
++    Manufacturer_Cost_Per_Case:cost,Manufacturer_Cost_Per_Pack:cpp,Sales_Price_Per_Pack:price,Net_Income_Per_Pack:net,
++    Net_Income_Per_Patron_Dollar:price?net/price:0,Manufacturer_Cost_Per_Patron_Dollar:price?cpp/price:0,
++    Target_On_Hand:integerOrThrow_(payload.targetOnHand,'Target On Hand'),Notes:normalizeText_(payload.notes)}); return {ok:true};
++}
+diff --git a/Dashboard.js b/Dashboard.js
+new file mode 100644
+index 0000000..e0c9f16
+--- /dev/null
++++ b/Dashboard.js
+@@ -0,0 +1,139 @@
++/** Dashboard and one-stop ordering for Inventory Management v1.13. */
++const DASHBOARD_SESSION_WINDOW = 10;
++const DASHBOARD_SESSIONS_PER_WEEK = 3;
++
++function getDashboardData() {
++  const games = getPTCatalog_().filter(isActiveCatalogRecord_);
++  const papers = getPaperCatalog_().filter(isActiveCatalogRecord_);
++  const deals = getPTDeals_();
++  const cases = getPaperCases_();
++  const transactions = getRecords_('Transactions');
++  const recentSessionIds = getRecentProcessedSessionIds_(transactions);
++  const recentSet = new Set(recentSessionIds);
++
++  const pt = games.map((game) => {
++    const gameDeals = deals.filter((deal) => String(deal.PT_Game_ID) === String(game.PT_Game_ID));
++    const sold = transactions.filter((transaction) => {
++      return String(transaction.Inventory_Type) === 'PT' &&
++        String(transaction.Product_ID) === String(game.PT_Game_ID) &&
++        String(transaction.Transaction_Type) === 'Sold' &&
++        recentSet.has(String(transaction.Session_ID));
++    }).length;
++    return {
++      gameId: String(game.PT_Game_ID),
++      formNumber: normalizeFormNumber_(game.Primary_Form_Number),
++      label: `${game.Game_Name} (${normalizeFormNumber_(game.Primary_Form_Number)})`,
++      onHand: gameDeals.filter((deal) => ['Unbundled', 'Bundled'].includes(String(deal.Deal_Status))).length,
++      targetOnHand: Number(game.Target_On_Hand || 0),
++      bundled: gameDeals.filter((deal) => String(deal.Deal_Status) === 'Bundled').length,
++      targetBundled: Number(game.Target_Bundled || 0),
++      soldPerWeek: recentSessionIds.length ? sold / recentSessionIds.length * DASHBOARD_SESSIONS_PER_WEEK : 0,
++      netProfitPerDollar: Number(game.Net_Income_Per_Patron_Dollar || 0)
++    };
++  }).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
++
++  const paper = papers.map((catalogRow) => {
++    const productCases = cases.filter((paperCase) => String(paperCase.Paper_ID) === String(catalogRow.Paper_ID));
++    const caseIds = new Set(productCases.map((paperCase) => String(paperCase.Paper_Case_ID)));
++    const packsOnHand = transactions.filter((transaction) => {
++      return String(transaction.Inventory_Type) === 'Paper' && caseIds.has(String(transaction.Item_ID));
++    }).reduce((sum, transaction) => sum + Number(transaction.Quantity_Change || 0), 0);
++    const soldPacks = -transactions.filter((transaction) => {
++      return String(transaction.Inventory_Type) === 'Paper' &&
++        String(transaction.Product_ID) === String(catalogRow.Paper_ID) &&
++        String(transaction.Transaction_Type) === 'Sold' &&
++        recentSet.has(String(transaction.Session_ID));
++    }).reduce((sum, transaction) => sum + Number(transaction.Quantity_Change || 0), 0);
++    return {
++      paperId: String(catalogRow.Paper_ID),
++      label: `${catalogRow.Short_Name} - ${catalogRow.Description}`,
++      packsOnHand: packsOnHand,
++      targetOnHand: Number(catalogRow.Target_On_Hand || 0),
++      soldPerWeek: recentSessionIds.length ? soldPacks / recentSessionIds.length * DASHBOARD_SESSIONS_PER_WEEK : 0,
++      netProfitPerDollar: Number(catalogRow.Net_Income_Per_Patron_Dollar || 0),
++      packsPerCase: Number(catalogRow.Packs_Per_Case || 0)
++    };
++  }).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
++
++  return { pt, paper, sessionCount: recentSessionIds.length };
++}
++
++function isActiveCatalogRecord_(record) {
++  return record.Active === true || String(record.Active).toLowerCase() === 'true';
++}
++
++function getRecentProcessedSessionIds_(transactions) {
++  const markers = transactions.filter((transaction) => {
++    return String(transaction.Inventory_Type) === 'System' &&
++      String(transaction.Transaction_Type) === 'Session Processed' &&
++      normalizeText_(transaction.Session_ID);
++  }).sort((a, b) => new Date(b.Effective_Date) - new Date(a.Effective_Date));
++  return [...new Set(markers.map((marker) => String(marker.Session_ID)))].slice(0, DASHBOARD_SESSION_WINDOW);
++}
++
++function placeDashboardOrder(adminCode, order) {
++  const authentication = authenticateAdmin(adminCode);
++  if (!authentication.ok) throw new Error(authentication.message);
++  try {
++    return placeDashboardOrderWithToken_(authentication.token, order);
++  } finally {
++    endAdminSession(authentication.token);
++  }
++}
++
++function placeDashboardOrderWithToken_(token, order) {
++  requireAdmin_(token);
++  order = order || {};
++  const ptLines = Array.isArray(order.pt) ? order.pt : [];
++  const paperLines = Array.isArray(order.paper) ? order.paper : [];
++  if (!ptLines.length && !paperLines.length) throw new Error('Enter at least one order quantity.');
++  const games = getPTCatalog_();
++  const papers = getPaperCatalog_();
++  const validatedPT = ptLines.map((line) => {
++    const quantity = integerOrThrow_(line.quantity, 'PT deals to order', { allowZero: false });
++    const game = games.find((row) => String(row.PT_Game_ID) === String(line.gameId));
++    if (!game || !isActiveCatalogRecord_(game)) throw new Error('An ordered PT game is unavailable.');
++    return { game, quantity };
++  });
++  const validatedPaper = paperLines.map((line) => {
++    const quantity = integerOrThrow_(line.quantity, 'Paper cases to order', { allowZero: false });
++    const paper = papers.find((row) => String(row.Paper_ID) === String(line.paperId));
++    if (!paper || !isActiveCatalogRecord_(paper)) throw new Error('An ordered Paper type is unavailable.');
++    return { paper, quantity };
++  });
++
++  const lock = LockService.getDocumentLock();
++  lock.waitLock(30000);
++  try {
++    let ptDeals = 0;
++    let paperCases = 0;
++    validatedPT.forEach(({game, quantity}) => {
++      createAnonymousPTStock_({
++        gameId: String(game.PT_Game_ID),
++        formNumber: normalizeFormNumber_(game.Primary_Form_Number),
++        quantity,
++        status: 'Unbundled',
++        effectiveDate: now_(),
++        transactionType: 'Received',
++        source: 'Inventory Ordering',
++        notes: `Dashboard order: ${quantity} deal(s).`
++      });
++      ptDeals += quantity;
++    });
++    validatedPaper.forEach(({paper, quantity}) => {
++      createAnonymousPaperStock_({
++        paperId: String(paper.Paper_ID),
++        cases: quantity,
++        packsPerCase: integerOrThrow_(paper.Packs_Per_Case, 'Packs per Case', { allowZero: false }),
++        effectiveDate: now_(),
++        transactionType: 'Received',
++        source: 'Inventory Ordering',
++        notes: `Dashboard order: ${quantity} case(s).`
++      });
++      paperCases += quantity;
++    });
++    return { ptDeals, paperCases, lineCount: validatedPT.length + validatedPaper.length };
++  } finally {
++    lock.releaseLock();
++  }
++}
+diff --git a/Index.html b/Index.html
+index fd108f1..0d3491a 100644
+--- a/Index.html
++++ b/Index.html
+@@ -55,6 +55,10 @@
+      </a>
+      <? } ?>
+      <? }); ?>
++     <button class="tile" type="button" onclick="openDashboard()">
++      <div style="aspect-ratio:1;background:linear-gradient(135deg,#155b25,#6aa84f);display:grid;place-items:center;color:white;font-size:72px">▦</div>
++      <div class="tile-copy"><h2>Inventory Dashboard</h2><p>Review active inventory and place the weekly order.</p></div>
++     </button>
+      <button class="tile" onclick="openAdminLogin()">
+       <div style="aspect-ratio:1;background:linear-gradient(135deg,#08275a,#075db6);display:grid;place-items:center;color:white;font-size:88px">
+        ⚙
+@@ -75,8 +79,12 @@
+     </p>
+    </section>
+    <?!= include_('AppPTBundling'); ?>
++   <?!= include_('AppDashboard'); ?>
++   <?!= include_('AppDashboard'); ?>
+    <?!= include_('AppPaperworkManagement'); ?>
+    <?!= include_('AppAdminMain'); ?>
++   <?!= include_('AppReconciliation'); ?>
++   <?!= include_('AppCatalogMaintenance'); ?>
+    <?!= include_('AppPTReconciliation'); ?>
+    <?!= include_('AppPaperReconciliation'); ?>
+    <?!= include_('AppOrdering'); ?>

@@ -1,0 +1,192 @@
+diff --git a/AppPaperReconciliation.html b/AppPaperReconciliation.html
+index e6bd5df..c0e735c 100644
+--- a/AppPaperReconciliation.html
++++ b/AppPaperReconciliation.html
+@@ -203,6 +203,7 @@
+       : 0;
+ 
+     const initialStatus = paperCase.recordedStatus || 'Unopened';
++    row.dataset.recordedStatus = paperCase.recordedStatus || '';
+ 
+     row.innerHTML = `
+       <td class="deal-id">
+@@ -263,6 +264,11 @@
+     row.querySelector('.existing-paper-notes').textContent =
+       paperCase.notes || '';
+ 
++    const physicalPacksInput = row.querySelector('.physical-packs');
++    physicalPacksInput.addEventListener('input', () => {
++      updateSuggestedPaperStatus(row);
++    });
++
+     const removeButton = row.querySelector('.remove-paper-case');
+ 
+     if (removeButton) {
+@@ -275,6 +281,37 @@
+   }
+ 
+ 
++  function updateSuggestedPaperStatus(row) {
++    const selectedPaper = selectedPaperType();
++    const packsInput = row.querySelector('.physical-packs');
++    const statusSelect = row.querySelector('.paper-observed-status');
++    const observedPacks = Number(packsInput.value);
++
++    if (
++      !selectedPaper ||
++      !Number.isInteger(observedPacks) ||
++      observedPacks < 0 ||
++      statusSelect.value === 'Missing'
++    ) {
++      return;
++    }
++
++    if (observedPacks === 0) {
++      statusSelect.value = 'Expended';
++      return;
++    }
++
++    if (observedPacks < Number(selectedPaper.packsPerCase)) {
++      statusSelect.value = 'Opened';
++      return;
++    }
++
++    if (row.dataset.recordedStatus !== 'Opened') {
++      statusSelect.value = 'Unopened';
++    }
++  }
++
++
+   function addNewPhysicalPaperCaseRow() {
+     if (!selectedPaperType()) {
+       setStatus(
+diff --git a/PaperReconciliation.js b/PaperReconciliation.js
+index 64496be..1c5df9c 100644
+--- a/PaperReconciliation.js
++++ b/PaperReconciliation.js
+@@ -13,6 +13,48 @@ const PAPER_CASE_STATUSES = [
+ ];
+ 
+ 
++/**
++ * Derives the required physical status from a reconciled pack count.
++ * Missing remains an explicit administrator choice. An already-opened case
++ * does not become Unopened merely because a correction restores full quantity.
++ */
++function derivePaperCaseStatus_(
++  requestedStatus,
++  recordedStatus,
++  observedPacks,
++  packsPerCase
++) {
++  if (requestedStatus === 'Missing') {
++    return 'Missing';
++  }
++  if (observedPacks === 0) {
++    return 'Expended';
++  }
++  if (observedPacks < packsPerCase) {
++    return 'Opened';
++  }
++  if (recordedStatus === 'Opened') {
++    return 'Opened';
++  }
++  return requestedStatus;
++}
++
++
++function getPaperPacksPerCase_(paperId) {
++  const paper = getPaperCatalog_().find((catalogRow) => {
++    return String(catalogRow.Paper_ID) === String(paperId);
++  });
++  if (!paper) {
++    throw new Error(`Paper type ${paperId} was not found.`);
++  }
++  return integerOrThrow_(
++    paper.Packs_Per_Case,
++    'Packs per Case',
++    { allowZero: false }
++  );
++}
++
++
+ function getPaperReconciliationBootstrap(token) {
+   requireAdmin_(token);
+ 
+@@ -226,9 +268,16 @@ function reconcileExistingPaperCase_(context) {
+   const recordedSerial = normalizeText_(existingCase.Serial_Number);
+   const observedSerial = normalizeText_(observation.serialNumber);
+   const recordedStatus = String(existingCase.Case_Status);
+-  const observedStatus = normalizeText_(observation.observedStatus);
++  const requestedStatus = normalizeText_(observation.observedStatus);
+   const expectedPacks = getPaperCasePackBalance_(caseId);
+   const observedPacks = Number(observation.observedPacks);
++  const packsPerCase = getPaperPacksPerCase_(context.paperId);
++  const observedStatus = derivePaperCaseStatus_(
++    requestedStatus,
++    recordedStatus,
++    observedPacks,
++    packsPerCase
++  );
+   const newNote = normalizeText_(observation.notes);
+ 
+   const serialChanged = recordedSerial !== observedSerial;
+@@ -348,7 +397,14 @@ function reconcileNewlyDiscoveredPaperCase_(context) {
+   const observation = context.observation;
+   const serialNumber = normalizeText_(observation.serialNumber);
+   const observedPacks = Number(observation.observedPacks);
+-  const observedStatus = normalizeText_(observation.observedStatus);
++  const requestedStatus = normalizeText_(observation.observedStatus);
++  const packsPerCase = getPaperPacksPerCase_(context.paperId);
++  const observedStatus = derivePaperCaseStatus_(
++    requestedStatus,
++    '',
++    observedPacks,
++    packsPerCase
++  );
+   const notes = normalizeText_(observation.notes) ||
+     'New physical Paper case discovered during inventory reconciliation.';
+ 
+diff --git a/TransactionFormatting.js b/TransactionFormatting.js
+index 80bf6d4..31601a9 100644
+--- a/TransactionFormatting.js
++++ b/TransactionFormatting.js
+@@ -1,6 +1,6 @@
+ /**
+  * TransactionFormatting.gs
+- * LBA Bingo Inventory Management v1.9
++ * LBA Bingo Inventory Management v1.10
+  *
+  * Ensures Transactions.Effective_Date displays as a date and
+  * Transactions.Timestamp displays full date and time.
+@@ -30,7 +30,7 @@ function applyTransactionTimestampFormattingV19() {
+       dataRows,
+       1
+     )
+-    .setNumberFormat('MM/dd/yyyy');
++    .setNumberFormat('ddd mmm dd');
+ 
+   sheet
+     .getRange(
+@@ -39,11 +39,18 @@ function applyTransactionTimestampFormattingV19() {
+       dataRows,
+       1
+     )
+-    .setNumberFormat('MM/dd/yyyy hh:mm:ss AM/PM');
++    .setNumberFormat('ddd mmm dd HH:mm:ss');
+ 
+   return {
+     ok: true,
+-    effectiveDateFormat: 'MM/dd/yyyy',
+-    timestampFormat: 'MM/dd/yyyy hh:mm:ss AM/PM'
++    effectiveDateFormat: 'ddd mmm dd',
++    timestampFormat: 'ddd mmm dd HH:mm:ss'
+   };
+ }
++
++
++
++/** Version-specific entry point for applying the V1.10 display formats. */
++function applyTransactionTimestampFormattingV110() {
++  return applyTransactionTimestampFormattingV19();
++}

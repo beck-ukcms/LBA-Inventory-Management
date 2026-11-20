@@ -18,51 +18,11 @@
   </div>
 
   <div class="grid">
-    <button
-      class="tile"
-      type="button"
-      onclick="openPTReconciliation()"
-    >
-      <div class="tile-copy">
-        <h2>PT Reconciliation</h2>
-        <p>Establish or correct deal-level pull-tab inventory.</p>
-      </div>
-    </button>
-
-    <button
-      class="tile"
-      type="button"
-      onclick="openPaperReconciliation()"
-    >
-      <div class="tile-copy">
-        <h2>Paper Reconciliation</h2>
-        <p>Reconcile case serials and pack-level paper inventory.</p>
-      </div>
-    </button>
-
-    <button
-      class="tile"
-      type="button"
-      onclick="openOrdering()"
-    >
-      <div class="tile-copy">
-        <h2>Order Stock</h2>
-        <p>Add unidentified PT deals or paper cases.</p>
-      </div>
-    </button>
-
-    <button
-      class="tile"
-      type="button"
-      disabled
-    >
-      <div class="tile-copy">
-        <h2>Inventory Issues</h2>
-        <p>Coming soon.</p>
-      </div>
-    </button>
+    <button class="tile" type="button" onclick="openOrdering()"><div class="tile-copy"><h2>Order Stock</h2><p>Add unidentified PT deals or paper cases.</p></div></button>
+    <button class="tile" type="button" onclick="openReconciliation()"><div class="tile-copy"><h2>Reconciliation</h2><p>Reconcile PT and Paper physical inventory.</p></div></button>
+    <button class="tile" type="button" onclick="openCatalogMaintenance()"><div class="tile-copy"><h2>Catalog Maintenance</h2><p>Maintain PT and Paper product catalogs.</p></div></button>
+    <button class="tile" type="button" disabled><div class="tile-copy"><h2>Inventory Issues</h2><p>Coming soon.</p></div></button>
   </div>
-
   <div
     class="panel"
     style="margin-top: 18px;"
