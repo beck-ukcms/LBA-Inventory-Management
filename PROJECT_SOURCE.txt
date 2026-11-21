@@ -1733,6 +1733,10 @@ function postInventoryTransaction_(data) {
     Notes: data.notes || ''
   });
 
+  if (String(data.inventoryType) === 'Paper' && data.itemId) {
+    adjustPaperCurrentBalance_(data.itemId, quantityChange);
+  }
+
   return transactionId;
 }
 
@@ -2271,6 +2275,90 @@ function appendInventoryNote_(existingNotes, newNote) {
   return `${existing}; ${addition}`;
 }
 
+// =============================================================================
+// V1.15 materialized current balances
+// =============================================================================
+function refreshPTCatalogBalances_() {
+  const catalog = getRecords_('PT_Catalog');
+  const counts = new Map();
+  getRecords_('PT_Deals').forEach((deal) => {
+    const id = String(deal.PT_Game_ID);
+    const value = counts.get(id) || {unbundled:0,bundled:0,open:0};
+    if (deal.Deal_Status === 'Unbundled') value.unbundled += 1;
+    if (deal.Deal_Status === 'Bundled') value.bundled += 1;
+    if (deal.Deal_Status === 'Open') value.open += 1;
+    counts.set(id,value);
+  });
+  const updatedAt = now_();
+  updateRecordRows_('PT_Catalog', catalog.map(row => {
+    const value=counts.get(String(row.PT_Game_ID))||{unbundled:0,bundled:0,open:0};
+    return {rowNumber:row._rowNumber,updates:{Qty_Unbundled:value.unbundled,Qty_Bundled:value.bundled,
+      Qty_Open:value.open,Qty_On_Hand:value.unbundled+value.bundled,Balance_Updated_At:updatedAt}};
+  }));
+  invalidateCatalogCaches_();
+}
+
+function refreshPaperCatalogBalances_() {
+  const catalog = getRecords_('Paper_Catalog');
+  const totals = new Map();
+  getRecords_('Paper_Cases').forEach(row => totals.set(String(row.Paper_ID),(totals.get(String(row.Paper_ID))||0)+Number(row.Current_Packs||0)));
+  const updatedAt=now_();
+  updateRecordRows_('Paper_Catalog',catalog.map(row=>({rowNumber:row._rowNumber,
+    updates:{Qty_On_Hand:totals.get(String(row.Paper_ID))||0,Balance_Updated_At:updatedAt}})));
+  invalidateCatalogCaches_();
+}
+
+function adjustPaperCurrentBalance_(caseId, delta) {
+  if (!caseId || !delta) return;
+  const paperCase=getRecords_('Paper_Cases').find(row=>String(row.Paper_Case_ID)===String(caseId));
+  if (!paperCase) throw new Error(`Paper case ${caseId} was not found for balance update.`);
+  const quantity=Number(paperCase.Current_Packs||0)+Number(delta);
+  updateRecordRow_('Paper_Cases',paperCase._rowNumber,{Current_Packs:quantity,Balance_Updated_At:now_()});
+  refreshPaperCatalogBalances_();
+}
+
+function initializeCurrentBalancesV115() {
+  const transactions=getRecords_('Transactions');
+  const balances=buildPaperBalanceMap_(transactions);
+  const cases=getRecords_('Paper_Cases');
+  updateRecordRows_('Paper_Cases',cases.map(row=>({rowNumber:row._rowNumber,
+    updates:{Current_Packs:balances.get(String(row.Paper_Case_ID))||0,Balance_Updated_At:now_()}})));
+  refreshPaperCatalogBalances_();
+  refreshPTCatalogBalances_();
+  return {ok:true,version:'1.15',paperCases:cases.length};
+}
+/** Shared reconciliation record operations. */
+function createReconciliationRecord_(data) {
+  const expected = integerOrThrow_(data.expectedQuantity, 'Expected Quantity');
+  const observed = integerOrThrow_(data.observedQuantity, 'Observed Quantity');
+  const correction = observed - expected;
+  const id = generateId_('RECONCILIATION', 'REC-', 7);
+  appendRecord_('Reconciliation_Records', {
+    Reconciliation_ID: id,
+    Timestamp: now_(),
+    Inventory_Type: data.inventoryType,
+    Product_ID: data.productId,
+    Item_ID: data.itemId || '',
+    Form_Number: data.formNumber || '',
+    Serial_Number: data.serialNumber,
+    Reconciliation_Type: data.reconciliationType || 'Inventory Check',
+    Expected_Quantity: expected,
+    Observed_Quantity: observed,
+    Correction_Amount: correction,
+    Observed_PT_Status: data.observedPTStatus || '',
+    Issue_ID: data.issueId || '',
+    Correction_Transaction_ID: '',
+    Notes: data.notes || '',
+  });
+  return {id, correction};
+}
+
+function linkReconciliationTransaction_(reconciliationId, transactionId) {
+  const record = getRecords_('Reconciliation_Records').find(row => String(row.Reconciliation_ID) === String(reconciliationId));
+  if (!record) throw new Error(`Reconciliation ${reconciliationId} was not found.`);
+  updateRecordRow_('Reconciliation_Records', record._rowNumber, {Correction_Transaction_ID: transactionId});
+}
+
 
 ================================================================
 FILE: InventoryIssues.js
@@ -2585,7 +2673,7 @@ function recordPaperOrder(token, payload) {
 
 
 ================================================================
-FILE: PaperReconciliation.js
+FILE: PaperInventory.js
 ================================================================
 
 /**
@@ -3103,7 +3191,7 @@ function buildPaperReconciliationNotes_(
 
 
 ================================================================
-FILE: PaperworkManagement.js
+FILE: Paperwork.js
 ================================================================
 
 /**
@@ -4266,10 +4354,568 @@ function validatePaperworkConfiguration_() {
     throw new Error('Paperwork Management configuration is incomplete.');
   }
 }
+/**
+ * SessionInventoryProcessing.js
+ * LBA Bingo Inventory Management v1.12
+ *
+ * Parses completed state paperwork immediately before archival. Processing is
+ * attempted once. A Started or Failed marker prevents automatic retry and the
+ * paperwork remains in the weekly folder for human recovery.
+ */
+
+const SESSION_PROCESSING_SOURCE = 'Session Paperwork Processing';
+const SESSION_MARKER_TYPES = [
+  'Session Processing Started',
+  'Session Processed',
+  'Session Processing Failed'
+];
+
+const PAPER_ROWS_BY_SESSION = {
+  Thursday: [9, 10, 12, 13, 15, 16, 18, 19, 21, 22],
+  Friday: [9, 10, 12, 13, 15, 16, 18, 19, 21, 22],
+  Sunday: [9, 10, 12, 13, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28]
+};
+
+const COMPLETED_PT_RANGES = [
+  { sheetName: 'WS-06 PTs (Main)', firstRow: 8, lastRow: 25 },
+  { sheetName: 'WS-06 PTs (Flash)', firstRow: 6, lastRow: 17 },
+  { sheetName: 'WS-07 Prog PTs', rows: [7, 8, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30] }
+];
+
+const CARRYOVER_START_ROWS = [33, 50, 67];
+
+
+function processSessionInventoryBeforeArchive_(context) {
+  const sessionId = normalizeText_(context.sessionId);
+
+  if (!sessionId) {
+    return {
+      ok: false,
+      message: 'No authoritative SessionID could be resolved.'
+    };
+  }
+
+  const state = getSessionProcessingState_(sessionId);
+
+  if (state === 'Session Processed') {
+    return {
+      ok: true,
+      alreadyProcessed: true,
+      message: 'Session inventory was already processed.'
+    };
+  }
+
+  if (
+    state === 'Session Processing Started' ||
+    state === 'Session Processing Failed'
+  ) {
+    return {
+      ok: false,
+      message:
+        `Session inventory has state "${state}". ` +
+        'Automatic retry is disabled; manual recovery is required.'
+    };
+  }
+
+  const dateCode = formatPaperworkMMDDYY_(context.date);
+  const file = findUniquePaperworkSheet_(
+    context.folder,
+    `LBA-Bingo_${dateCode}`
+  );
+
+  if (!file) {
+    return {
+      ok: false,
+      message: 'The completed paperwork spreadsheet could not be found.'
+    };
+  }
+
+  postSessionProcessingMarker_(
+    sessionId,
+    context.date,
+    'Session Processing Started',
+    `Started inventory processing from ${file.getName()} (${file.getId()}).`
+  );
+
+  try {
+    const spreadsheet = SpreadsheetApp.openById(file.getId());
+
+    const paperCount = processSessionPaper_(
+      spreadsheet,
+      context,
+      file
+    );
+
+    const ptResult = processSessionPT_(
+      spreadsheet,
+      context,
+      file
+    );
+
+    postSessionProcessingMarker_(
+      sessionId,
+      context.date,
+      'Session Processed',
+      `Completed inventory processing from ${file.getName()}. ` +
+      `${paperCount} Paper transaction(s); ` +
+      `${ptResult.transactions} PT transaction(s); ` +
+      `${ptResult.issues} issue(s).`
+    );
+
+    return {
+      ok: true,
+      paperTransactions: paperCount,
+      ptTransactions: ptResult.transactions,
+      issues: ptResult.issues,
+      message: 'Session inventory processing completed.'
+    };
+  } catch (error) {
+    try {
+      postSessionProcessingMarker_(
+        sessionId,
+        context.date,
+        'Session Processing Failed',
+        `Inventory processing failed: ${error.message}`
+      );
+    } catch (markerError) {
+      console.error(
+        'Unable to record Session Processing Failed marker:',
+        markerError
+      );
+    }
+
+    return {
+      ok: false,
+      message:
+        `Inventory processing failed: ${error.message}`
+    };
+  }
+}
+
+
+function getSessionProcessingState_(sessionId) {
+  const markers = getRecords_('Transactions')
+    .filter((transaction) => {
+      return (
+        String(transaction.Inventory_Type) === 'System' &&
+        String(transaction.Session_ID) === String(sessionId) &&
+        String(transaction.Source) === SESSION_PROCESSING_SOURCE &&
+        SESSION_MARKER_TYPES.includes(
+          String(transaction.Transaction_Type)
+        )
+      );
+    });
+
+  return markers.length
+    ? String(markers[markers.length - 1].Transaction_Type)
+    : '';
+}
+
+
+function postSessionProcessingMarker_(
+  sessionId,
+  effectiveDate,
+  transactionType,
+  notes
+) {
+  return postInventoryTransaction_({
+    effectiveDate: effectiveDate,
+    inventoryType: 'System',
+    productId: '',
+    itemId: '',
+    formNumber: '',
+    serialNumber: '',
+    transactionType: transactionType,
+    quantityChange: 0,
+    unit: 'Session',
+    sessionId: sessionId,
+    source: SESSION_PROCESSING_SOURCE,
+    notes: notes
+  });
+}
+
+
+function processSessionPaper_(spreadsheet, context, sourceFile) {
+  const sheet = spreadsheet.getSheetByName('WS-01 Paper');
+
+  if (!sheet) {
+    throw new Error('Required worksheet WS-01 Paper is missing.');
+  }
+
+  let transactionCount = 0;
+
+  PAPER_ROWS_BY_SESSION[context.label].forEach((rowNumber) => {
+    const description = normalizeText_(sheet.getRange(rowNumber, 2).getDisplayValue());
+    const serialNumber = normalizeText_(sheet.getRange(rowNumber, 3).getDisplayValue());
+    const quantity = Number(sheet.getRange(rowNumber, 6).getValue() || 0);
+
+    if (!serialNumber && quantity === 0) {
+      return;
+    }
+
+    if (!serialNumber || !Number.isInteger(quantity) || quantity < 0) {
+      throw new Error(
+        `Invalid Paper entry on WS-01 row ${rowNumber}.`
+      );
+    }
+
+    if (quantity === 0) {
+      return;
+    }
+
+    const paperCase = getPaperCases_().find((candidate) => {
+      return normalizeText_(candidate.Serial_Number) === serialNumber;
+    });
+
+    if (!paperCase) {
+      createInventoryIssue_({
+        inventoryType: 'Paper',
+        issueType: 'Unknown Serial',
+        productId: '',
+        itemId: '',
+        serialNumber: serialNumber,
+        sessionId: context.sessionId,
+        expectedQuantity: 0,
+        reportedQuantity: quantity,
+        discrepancyAmount: quantity,
+        notes:
+          `WS-01 row ${rowNumber}: ${description}. ` +
+          `Source file ${sourceFile.getId()}.`
+      });
+      return;
+    }
+
+    const balance = getPaperCasePackBalance_(paperCase.Paper_Case_ID);
+
+    if (quantity > balance) {
+      createInventoryIssue_({
+        inventoryType: 'Paper',
+        issueType: 'Insufficient Inventory',
+        productId: paperCase.Paper_ID,
+        itemId: paperCase.Paper_Case_ID,
+        serialNumber: serialNumber,
+        sessionId: context.sessionId,
+        expectedQuantity: balance,
+        reportedQuantity: quantity,
+        discrepancyAmount: quantity - balance,
+        notes:
+          `Paperwork reports ${quantity} packs used from a ledger balance ` +
+          `of ${balance}. WS-01 row ${rowNumber}.`
+      });
+    }
+
+    postInventoryTransaction_({
+      effectiveDate: context.date,
+      inventoryType: 'Paper',
+      productId: paperCase.Paper_ID,
+      itemId: paperCase.Paper_Case_ID,
+      serialNumber: serialNumber,
+      transactionType: 'Sold',
+      quantityChange: -quantity,
+      unit: 'Pack',
+      sessionId: context.sessionId,
+      source: SESSION_PROCESSING_SOURCE,
+      notes:
+        `${description}; WS-01 row ${rowNumber}; ` +
+        `source file ${sourceFile.getId()}.`
+    });
+
+    const remaining = balance - quantity;
+    const updates = {};
+
+    if (remaining <= 0) {
+      updates.Case_Status = 'Expended';
+      updates.Expended_Date = context.date;
+    } else if (String(paperCase.Case_Status) === 'Unopened') {
+      updates.Case_Status = 'Opened';
+      updates.Opened_Date = context.date;
+    }
+
+    if (Object.keys(updates).length) {
+      updateRecordRow_(
+        'Paper_Cases',
+        paperCase._rowNumber,
+        updates
+      );
+    }
+
+    transactionCount += 1;
+  });
+
+  return transactionCount;
+}
+
+
+function processSessionPT_(spreadsheet, context, sourceFile) {
+  let transactions = 0;
+  let issues = 0;
+
+  COMPLETED_PT_RANGES.forEach((definition) => {
+    const sheet = spreadsheet.getSheetByName(definition.sheetName);
+
+    if (!sheet) {
+      throw new Error(`Required worksheet ${definition.sheetName} is missing.`);
+    }
+
+    const rows = definition.rows || createIntegerRange_(
+      definition.firstRow,
+      definition.lastRow
+    );
+
+    rows.forEach((rowNumber) => {
+      const serialNumber = normalizeText_(sheet.getRange(rowNumber, 4).getDisplayValue());
+      const formNumber = normalizeFormNumber_(sheet.getRange(rowNumber, 5).getDisplayValue());
+
+      if (!serialNumber || !formNumber || /^#N\/A$/i.test(serialNumber)) {
+        return;
+      }
+
+      const result = processCompletedPTDeal_(
+        formNumber,
+        serialNumber,
+        context,
+        definition.sheetName,
+        rowNumber,
+        sourceFile
+      );
+
+      transactions += result.transaction ? 1 : 0;
+      issues += result.issue ? 1 : 0;
+    });
+  });
+
+  const main = spreadsheet.getSheetByName('WS-06 PTs (Main)');
+
+  CARRYOVER_START_ROWS.forEach((startRow) => {
+    const result = processCarryoverPTDeal_(
+      main,
+      startRow,
+      context,
+      sourceFile
+    );
+
+    transactions += result.transaction ? 1 : 0;
+    issues += result.issue ? 1 : 0;
+  });
+
+  return {
+    transactions: transactions,
+    issues: issues
+  };
+}
+
+
+function processCompletedPTDeal_(
+  formNumber,
+  serialNumber,
+  context,
+  sheetName,
+  rowNumber,
+  sourceFile
+) {
+  const deal = findPTDeal_(formNumber, serialNumber);
+
+  if (!deal) {
+    createPTPaperworkIssue_(
+      'Unknown Deal',
+      null,
+      formNumber,
+      serialNumber,
+      context,
+      `${sheetName} row ${rowNumber}; source file ${sourceFile.getId()}.`
+    );
+
+    return { transaction: false, issue: true };
+  }
+
+  const status = String(deal.Deal_Status);
+
+  if (status === 'Sold') {
+    createPTPaperworkIssue_(
+      'Duplicate Sale',
+      deal,
+      formNumber,
+      serialNumber,
+      context,
+      `${sheetName} row ${rowNumber}.`
+    );
+
+    return { transaction: false, issue: true };
+  }
+
+  const quantityChange = status === 'Open' ? 0 : -1;
+
+  if (!['Bundled', 'Open'].includes(status)) {
+    createPTPaperworkIssue_(
+      'Unavailable Deal',
+      deal,
+      formNumber,
+      serialNumber,
+      context,
+      `Deal status was ${status}; ${sheetName} row ${rowNumber}.`
+    );
+
+    return { transaction: false, issue: true };
+  }
+
+  updateRecordRow_('PT_Deals', deal._rowNumber, {
+    Deal_Status: 'Sold',
+    Expended_Date: context.date,
+    Expended_Session_ID: context.sessionId
+  });
+
+  postInventoryTransaction_({
+    effectiveDate: context.date,
+    inventoryType: 'PT',
+    productId: deal.PT_Game_ID,
+    itemId: deal.PT_Deal_ID,
+    formNumber: formNumber,
+    serialNumber: serialNumber,
+    transactionType: 'Sold',
+    quantityChange: quantityChange,
+    unit: 'Deal',
+    sessionId: context.sessionId,
+    source: SESSION_PROCESSING_SOURCE,
+    notes: `${sheetName} row ${rowNumber}; source file ${sourceFile.getId()}.`
+  });
+
+  return { transaction: true, issue: false };
+}
+
+
+function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
+  const serialNumber = normalizeText_(sheet.getRange(startRow, 4).getDisplayValue());
+  const formNumber = normalizeFormNumber_(sheet.getRange(startRow, 5).getDisplayValue());
+  const ticketCount = Number(sheet.getRange(startRow, 6).getValue() || 0);
+
+  if (!serialNumber || !formNumber) {
+    return { transaction: false, issue: false };
+  }
+
+  const totalSales = Number(sheet.getRange(startRow + 5, 6).getValue() || 0);
+  const deal = findPTDeal_(formNumber, serialNumber);
+
+  if (!deal) {
+    createPTPaperworkIssue_(
+      'Unknown Deal',
+      null,
+      formNumber,
+      serialNumber,
+      context,
+      `Carry-over block beginning row ${startRow}.`
+    );
+
+    return { transaction: false, issue: true };
+  }
+
+  if (totalSales > ticketCount) {
+    createPTPaperworkIssue_(
+      'Unexpected Deal',
+      deal,
+      formNumber,
+      serialNumber,
+      context,
+      `Carry-over sales ${totalSales} exceed ticket count ${ticketCount}.`
+    );
+
+    return { transaction: false, issue: true };
+  }
+
+  const completed = totalSales === ticketCount;
+  const priorStatus = String(deal.Deal_Status);
+  const targetStatus = completed ? 'Sold' : 'Open';
+
+  if (priorStatus === targetStatus) {
+    return { transaction: false, issue: false };
+  }
+
+  if (!['Bundled', 'Open'].includes(priorStatus)) {
+    createPTPaperworkIssue_(
+      'Unavailable Deal',
+      deal,
+      formNumber,
+      serialNumber,
+      context,
+      `Carry-over deal status was ${priorStatus}.`
+    );
+
+    return { transaction: false, issue: true };
+  }
+
+  const quantityChange =
+    priorStatus === 'Bundled' && targetStatus === 'Open'
+      ? -1
+      : 0;
+
+  const updates = {
+    Deal_Status: targetStatus
+  };
+
+  if (targetStatus === 'Sold') {
+    updates.Expended_Date = context.date;
+    updates.Expended_Session_ID = context.sessionId;
+  }
+
+  updateRecordRow_('PT_Deals', deal._rowNumber, updates);
+
+  postInventoryTransaction_({
+    effectiveDate: context.date,
+    inventoryType: 'PT',
+    productId: deal.PT_Game_ID,
+    itemId: deal.PT_Deal_ID,
+    formNumber: formNumber,
+    serialNumber: serialNumber,
+    transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
+    quantityChange: quantityChange,
+    unit: 'Deal',
+    sessionId: context.sessionId,
+    source: SESSION_PROCESSING_SOURCE,
+    notes:
+      `Carry-over block row ${startRow}; ${totalSales}/${ticketCount} sold; ` +
+      `source file ${sourceFile.getId()}.`
+  });
+
+  return { transaction: true, issue: false };
+}
+
+
+function createPTPaperworkIssue_(
+  issueType,
+  deal,
+  formNumber,
+  serialNumber,
+  context,
+  notes
+) {
+  return createInventoryIssue_({
+    inventoryType: 'PT',
+    issueType: issueType,
+    productId: deal ? deal.PT_Game_ID : '',
+    itemId: deal ? deal.PT_Deal_ID : '',
+    formNumber: formNumber,
+    serialNumber: serialNumber,
+    sessionId: context.sessionId,
+    expectedQuantity: deal ? 1 : 0,
+    reportedQuantity: 1,
+    discrepancyAmount: deal ? 0 : 1,
+    notes: notes
+  });
+}
+
+
+function createIntegerRange_(first, last) {
+  const output = [];
+
+  for (let value = first; value <= last; value += 1) {
+    output.push(value);
+  }
+
+  return output;
+}
 
 
 ================================================================
-FILE: PTBundling.js
+FILE: PTInventory.js
 ================================================================
 
 /**
@@ -4606,12 +5252,6 @@ function resolveOpenPTIssuesForDeal_(deal, resolutionNote) {
 
   return resolvedIssueIds;
 }
-
-
-================================================================
-FILE: PTReconciliation.js
-================================================================
-
 /**
  * PTReconciliation.gs
  * LBA Bingo Inventory Management v1.5
@@ -5087,43 +5727,6 @@ function buildPTReconciliationNotes_(
 
 
 ================================================================
-FILE: Reconciliation.js
-================================================================
-
-/** Shared reconciliation record operations. */
-function createReconciliationRecord_(data) {
-  const expected = integerOrThrow_(data.expectedQuantity, 'Expected Quantity');
-  const observed = integerOrThrow_(data.observedQuantity, 'Observed Quantity');
-  const correction = observed - expected;
-  const id = generateId_('RECONCILIATION', 'REC-', 7);
-  appendRecord_('Reconciliation_Records', {
-    Reconciliation_ID: id,
-    Timestamp: now_(),
-    Inventory_Type: data.inventoryType,
-    Product_ID: data.productId,
-    Item_ID: data.itemId || '',
-    Form_Number: data.formNumber || '',
-    Serial_Number: data.serialNumber,
-    Reconciliation_Type: data.reconciliationType || 'Inventory Check',
-    Expected_Quantity: expected,
-    Observed_Quantity: observed,
-    Correction_Amount: correction,
-    Observed_PT_Status: data.observedPTStatus || '',
-    Issue_ID: data.issueId || '',
-    Correction_Transaction_ID: '',
-    Notes: data.notes || '',
-  });
-  return {id, correction};
-}
-
-function linkReconciliationTransaction_(reconciliationId, transactionId) {
-  const record = getRecords_('Reconciliation_Records').find(row => String(row.Reconciliation_ID) === String(reconciliationId));
-  if (!record) throw new Error(`Reconciliation ${reconciliationId} was not found.`);
-  updateRecordRow_('Reconciliation_Records', record._rowNumber, {Correction_Transaction_ID: transactionId});
-}
-
-
-================================================================
 FILE: Schema.js
 ================================================================
 
@@ -5183,10 +5786,11 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
         Game_Type: ['Daub', 'Horse Race', 'Under Seal', 'Mixed', 'Other'],
       },
       checkboxes: ['Active'],
-      integers: ['Display_Order', 'Cards_Per_Deal', 'Deals_Per_Case', 'Target_On_Hand', 'Target_Bundled'],
+      integers: ['Display_Order', 'Cards_Per_Deal', 'Deals_Per_Case', 'Target_On_Hand', 'Target_Bundled', 'Qty_Unbundled', 'Qty_Bundled', 'Qty_Open', 'Qty_On_Hand'],
       decimals: [],
       currency: ['Price_Per_Card', 'Payout_Per_Deal', 'Manufacturer_Cost_Per_Deal', 'Gross_Receipts_Per_Deal', 'Gaming_Income_Before_Cost', 'Net_Income_Per_Deal', 'Manufacturer_Cost_Per_Case'],
       percent: ['Net_Income_Per_Patron_Dollar', 'Manufacturer_Cost_Per_Patron_Dollar'],
+      timestamps: ['Balance_Updated_At'],
       formulas: {
         Gross_Receipts_Per_Deal: '=ARRAYFORMULA(IF(A2:A="","",H2:H*J2:J))',
         Gaming_Income_Before_Cost: '=ARRAYFORMULA(IF(A2:A="","",M2:M-K2:K))',
@@ -5224,6 +5828,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       decimals: ['Packs_Per_Box'],
       currency: ['Manufacturer_Cost_Per_Case', 'Manufacturer_Cost_Per_Pack', 'Sales_Price_Per_Pack', 'Net_Income_Per_Pack'],
       percent: ['Net_Income_Per_Patron_Dollar', 'Manufacturer_Cost_Per_Patron_Dollar'],
+      timestamps: ['Balance_Updated_At'],
       formulas: {
         Packs_Per_Case: '=ARRAYFORMULA(IF(A2:A="","",F2:F*G2:G))',
         Manufacturer_Cost_Per_Pack: '=ARRAYFORMULA(IF(A2:A="","",IFERROR(I2:I/H2:H,0)))',
@@ -5266,13 +5871,16 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
         'Opened_Date',
         'Expended_Date',
         'Notes',
+        'Current_Packs',
+        'Balance_Updated_At',
       ],
-      widths: [125, 95, 140, 110, 110, 110, 115, 240],
+      widths: [125, 95, 140, 110, 110, 110, 115, 240, 110, 155],
       dropdowns: {
         Case_Status: ['Unopened', 'Opened', 'Expended', 'Missing'],
       },
-      checkboxes: [], integers: [], decimals: [], currency: [], percent: [], formulas: {},
+      checkboxes: [], integers: ['Current_Packs'], decimals: [], currency: [], percent: [], formulas: {},
       dates: ['Received_Date', 'Opened_Date', 'Expended_Date'],
+      timestamps: ['Balance_Updated_At'],
     },
 
     Transactions: {
@@ -5913,566 +6521,32 @@ function applySchemaV114Patch() {
 
 
 ================================================================
-FILE: SessionInventoryProcessing.js
+FILE: SchemaPatchV115.js
 ================================================================
 
-/**
- * SessionInventoryProcessing.js
- * LBA Bingo Inventory Management v1.12
- *
- * Parses completed state paperwork immediately before archival. Processing is
- * attempted once. A Started or Failed marker prevents automatic retry and the
- * paperwork remains in the weekly folder for human recovery.
- */
-
-const SESSION_PROCESSING_SOURCE = 'Session Paperwork Processing';
-const SESSION_MARKER_TYPES = [
-  'Session Processing Started',
-  'Session Processed',
-  'Session Processing Failed'
-];
-
-const PAPER_ROWS_BY_SESSION = {
-  Thursday: [9, 10, 12, 13, 15, 16, 18, 19, 21, 22],
-  Friday: [9, 10, 12, 13, 15, 16, 18, 19, 21, 22],
-  Sunday: [9, 10, 12, 13, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28]
-};
-
-const COMPLETED_PT_RANGES = [
-  { sheetName: 'WS-06 PTs (Main)', firstRow: 8, lastRow: 25 },
-  { sheetName: 'WS-06 PTs (Flash)', firstRow: 6, lastRow: 17 },
-  { sheetName: 'WS-07 Prog PTs', rows: [7, 8, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30] }
-];
-
-const CARRYOVER_START_ROWS = [33, 50, 67];
-
-
-function processSessionInventoryBeforeArchive_(context) {
-  const sessionId = normalizeText_(context.sessionId);
-
-  if (!sessionId) {
-    return {
-      ok: false,
-      message: 'No authoritative SessionID could be resolved.'
-    };
-  }
-
-  const state = getSessionProcessingState_(sessionId);
-
-  if (state === 'Session Processed') {
-    return {
-      ok: true,
-      alreadyProcessed: true,
-      message: 'Session inventory was already processed.'
-    };
-  }
-
-  if (
-    state === 'Session Processing Started' ||
-    state === 'Session Processing Failed'
-  ) {
-    return {
-      ok: false,
-      message:
-        `Session inventory has state "${state}". ` +
-        'Automatic retry is disabled; manual recovery is required.'
-    };
-  }
-
-  const dateCode = formatPaperworkMMDDYY_(context.date);
-  const file = findUniquePaperworkSheet_(
-    context.folder,
-    `LBA-Bingo_${dateCode}`
-  );
-
-  if (!file) {
-    return {
-      ok: false,
-      message: 'The completed paperwork spreadsheet could not be found.'
-    };
-  }
-
-  postSessionProcessingMarker_(
-    sessionId,
-    context.date,
-    'Session Processing Started',
-    `Started inventory processing from ${file.getName()} (${file.getId()}).`
-  );
-
-  try {
-    const spreadsheet = SpreadsheetApp.openById(file.getId());
-
-    const paperCount = processSessionPaper_(
-      spreadsheet,
-      context,
-      file
-    );
-
-    const ptResult = processSessionPT_(
-      spreadsheet,
-      context,
-      file
-    );
-
-    postSessionProcessingMarker_(
-      sessionId,
-      context.date,
-      'Session Processed',
-      `Completed inventory processing from ${file.getName()}. ` +
-      `${paperCount} Paper transaction(s); ` +
-      `${ptResult.transactions} PT transaction(s); ` +
-      `${ptResult.issues} issue(s).`
-    );
-
-    return {
-      ok: true,
-      paperTransactions: paperCount,
-      ptTransactions: ptResult.transactions,
-      issues: ptResult.issues,
-      message: 'Session inventory processing completed.'
-    };
-  } catch (error) {
-    try {
-      postSessionProcessingMarker_(
-        sessionId,
-        context.date,
-        'Session Processing Failed',
-        `Inventory processing failed: ${error.message}`
-      );
-    } catch (markerError) {
-      console.error(
-        'Unable to record Session Processing Failed marker:',
-        markerError
-      );
-    }
-
-    return {
-      ok: false,
-      message:
-        `Inventory processing failed: ${error.message}`
-    };
-  }
-}
-
-
-function getSessionProcessingState_(sessionId) {
-  const markers = getRecords_('Transactions')
-    .filter((transaction) => {
-      return (
-        String(transaction.Inventory_Type) === 'System' &&
-        String(transaction.Session_ID) === String(sessionId) &&
-        String(transaction.Source) === SESSION_PROCESSING_SOURCE &&
-        SESSION_MARKER_TYPES.includes(
-          String(transaction.Transaction_Type)
-        )
-      );
-    });
-
-  return markers.length
-    ? String(markers[markers.length - 1].Transaction_Type)
-    : '';
-}
-
-
-function postSessionProcessingMarker_(
-  sessionId,
-  effectiveDate,
-  transactionType,
-  notes
-) {
-  return postInventoryTransaction_({
-    effectiveDate: effectiveDate,
-    inventoryType: 'System',
-    productId: '',
-    itemId: '',
-    formNumber: '',
-    serialNumber: '',
-    transactionType: transactionType,
-    quantityChange: 0,
-    unit: 'Session',
-    sessionId: sessionId,
-    source: SESSION_PROCESSING_SOURCE,
-    notes: notes
-  });
-}
-
-
-function processSessionPaper_(spreadsheet, context, sourceFile) {
-  const sheet = spreadsheet.getSheetByName('WS-01 Paper');
-
-  if (!sheet) {
-    throw new Error('Required worksheet WS-01 Paper is missing.');
-  }
-
-  let transactionCount = 0;
-
-  PAPER_ROWS_BY_SESSION[context.label].forEach((rowNumber) => {
-    const description = normalizeText_(sheet.getRange(rowNumber, 2).getDisplayValue());
-    const serialNumber = normalizeText_(sheet.getRange(rowNumber, 3).getDisplayValue());
-    const quantity = Number(sheet.getRange(rowNumber, 6).getValue() || 0);
-
-    if (!serialNumber && quantity === 0) {
-      return;
-    }
-
-    if (!serialNumber || !Number.isInteger(quantity) || quantity < 0) {
-      throw new Error(
-        `Invalid Paper entry on WS-01 row ${rowNumber}.`
-      );
-    }
-
-    if (quantity === 0) {
-      return;
-    }
-
-    const paperCase = getPaperCases_().find((candidate) => {
-      return normalizeText_(candidate.Serial_Number) === serialNumber;
-    });
-
-    if (!paperCase) {
-      createInventoryIssue_({
-        inventoryType: 'Paper',
-        issueType: 'Unknown Serial',
-        productId: '',
-        itemId: '',
-        serialNumber: serialNumber,
-        sessionId: context.sessionId,
-        expectedQuantity: 0,
-        reportedQuantity: quantity,
-        discrepancyAmount: quantity,
-        notes:
-          `WS-01 row ${rowNumber}: ${description}. ` +
-          `Source file ${sourceFile.getId()}.`
-      });
-      return;
-    }
-
-    const balance = getPaperCasePackBalance_(paperCase.Paper_Case_ID);
-
-    if (quantity > balance) {
-      createInventoryIssue_({
-        inventoryType: 'Paper',
-        issueType: 'Insufficient Inventory',
-        productId: paperCase.Paper_ID,
-        itemId: paperCase.Paper_Case_ID,
-        serialNumber: serialNumber,
-        sessionId: context.sessionId,
-        expectedQuantity: balance,
-        reportedQuantity: quantity,
-        discrepancyAmount: quantity - balance,
-        notes:
-          `Paperwork reports ${quantity} packs used from a ledger balance ` +
-          `of ${balance}. WS-01 row ${rowNumber}.`
-      });
-    }
-
-    postInventoryTransaction_({
-      effectiveDate: context.date,
-      inventoryType: 'Paper',
-      productId: paperCase.Paper_ID,
-      itemId: paperCase.Paper_Case_ID,
-      serialNumber: serialNumber,
-      transactionType: 'Sold',
-      quantityChange: -quantity,
-      unit: 'Pack',
-      sessionId: context.sessionId,
-      source: SESSION_PROCESSING_SOURCE,
-      notes:
-        `${description}; WS-01 row ${rowNumber}; ` +
-        `source file ${sourceFile.getId()}.`
-    });
-
-    const remaining = balance - quantity;
-    const updates = {};
-
-    if (remaining <= 0) {
-      updates.Case_Status = 'Expended';
-      updates.Expended_Date = context.date;
-    } else if (String(paperCase.Case_Status) === 'Unopened') {
-      updates.Case_Status = 'Opened';
-      updates.Opened_Date = context.date;
-    }
-
-    if (Object.keys(updates).length) {
-      updateRecordRow_(
-        'Paper_Cases',
-        paperCase._rowNumber,
-        updates
-      );
-    }
-
-    transactionCount += 1;
-  });
-
-  return transactionCount;
-}
-
-
-function processSessionPT_(spreadsheet, context, sourceFile) {
-  let transactions = 0;
-  let issues = 0;
-
-  COMPLETED_PT_RANGES.forEach((definition) => {
-    const sheet = spreadsheet.getSheetByName(definition.sheetName);
-
-    if (!sheet) {
-      throw new Error(`Required worksheet ${definition.sheetName} is missing.`);
-    }
-
-    const rows = definition.rows || createIntegerRange_(
-      definition.firstRow,
-      definition.lastRow
-    );
-
-    rows.forEach((rowNumber) => {
-      const serialNumber = normalizeText_(sheet.getRange(rowNumber, 4).getDisplayValue());
-      const formNumber = normalizeFormNumber_(sheet.getRange(rowNumber, 5).getDisplayValue());
-
-      if (!serialNumber || !formNumber || /^#N\/A$/i.test(serialNumber)) {
-        return;
-      }
-
-      const result = processCompletedPTDeal_(
-        formNumber,
-        serialNumber,
-        context,
-        definition.sheetName,
-        rowNumber,
-        sourceFile
-      );
-
-      transactions += result.transaction ? 1 : 0;
-      issues += result.issue ? 1 : 0;
-    });
-  });
-
-  const main = spreadsheet.getSheetByName('WS-06 PTs (Main)');
-
-  CARRYOVER_START_ROWS.forEach((startRow) => {
-    const result = processCarryoverPTDeal_(
-      main,
-      startRow,
-      context,
-      sourceFile
-    );
-
-    transactions += result.transaction ? 1 : 0;
-    issues += result.issue ? 1 : 0;
-  });
-
-  return {
-    transactions: transactions,
-    issues: issues
+/** One-time V1.15 schema expansion and balance initialization. */
+function applySchemaV115Patch() {
+  const additions = {
+    PT_Catalog: ['Qty_Unbundled','Qty_Bundled','Qty_Open','Qty_On_Hand','Balance_Updated_At'],
+    Paper_Catalog: ['Qty_On_Hand','Balance_Updated_At'],
+    Paper_Cases: ['Current_Packs','Balance_Updated_At']
   };
-}
-
-
-function processCompletedPTDeal_(
-  formNumber,
-  serialNumber,
-  context,
-  sheetName,
-  rowNumber,
-  sourceFile
-) {
-  const deal = findPTDeal_(formNumber, serialNumber);
-
-  if (!deal) {
-    createPTPaperworkIssue_(
-      'Unknown Deal',
-      null,
-      formNumber,
-      serialNumber,
-      context,
-      `${sheetName} row ${rowNumber}; source file ${sourceFile.getId()}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const status = String(deal.Deal_Status);
-
-  if (status === 'Sold') {
-    createPTPaperworkIssue_(
-      'Duplicate Sale',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `${sheetName} row ${rowNumber}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const quantityChange = status === 'Open' ? 0 : -1;
-
-  if (!['Bundled', 'Open'].includes(status)) {
-    createPTPaperworkIssue_(
-      'Unavailable Deal',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `Deal status was ${status}; ${sheetName} row ${rowNumber}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  updateRecordRow_('PT_Deals', deal._rowNumber, {
-    Deal_Status: 'Sold',
-    Expended_Date: context.date,
-    Expended_Session_ID: context.sessionId
+  Object.entries(additions).forEach(([sheetName,headers]) => {
+    const sheet=getSheetOrThrow_(sheetName);
+    const existing=sheet.getRange(1,1,1,sheet.getLastColumn()).getDisplayValues()[0];
+    const missing=headers.filter(header=>!existing.includes(header));
+    if (!missing.length) return;
+    const required=existing.length+missing.length;
+    if (sheet.getMaxColumns()<required) sheet.insertColumnsAfter(sheet.getMaxColumns(),required-sheet.getMaxColumns());
+    sheet.getRange(1,existing.length+1,1,missing.length).setValues([missing]);
+    const table=getNativeTableForSheet_(sheet);
+    const updated=JSON.parse(JSON.stringify(table));
+    updated.range.endColumnIndex=required;
+    updated.columnProperties=[...(updated.columnProperties||[]),...missing.map((header,index)=>({columnIndex:existing.length+index,columnName:header}))];
+    Sheets.Spreadsheets.batchUpdate({requests:[{updateTable:{table:updated,fields:'range,columnProperties'}}]},getInventorySpreadsheet_().getId());
   });
-
-  postInventoryTransaction_({
-    effectiveDate: context.date,
-    inventoryType: 'PT',
-    productId: deal.PT_Game_ID,
-    itemId: deal.PT_Deal_ID,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    transactionType: 'Sold',
-    quantityChange: quantityChange,
-    unit: 'Deal',
-    sessionId: context.sessionId,
-    source: SESSION_PROCESSING_SOURCE,
-    notes: `${sheetName} row ${rowNumber}; source file ${sourceFile.getId()}.`
-  });
-
-  return { transaction: true, issue: false };
-}
-
-
-function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
-  const serialNumber = normalizeText_(sheet.getRange(startRow, 4).getDisplayValue());
-  const formNumber = normalizeFormNumber_(sheet.getRange(startRow, 5).getDisplayValue());
-  const ticketCount = Number(sheet.getRange(startRow, 6).getValue() || 0);
-
-  if (!serialNumber || !formNumber) {
-    return { transaction: false, issue: false };
-  }
-
-  const totalSales = Number(sheet.getRange(startRow + 5, 6).getValue() || 0);
-  const deal = findPTDeal_(formNumber, serialNumber);
-
-  if (!deal) {
-    createPTPaperworkIssue_(
-      'Unknown Deal',
-      null,
-      formNumber,
-      serialNumber,
-      context,
-      `Carry-over block beginning row ${startRow}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  if (totalSales > ticketCount) {
-    createPTPaperworkIssue_(
-      'Unexpected Deal',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `Carry-over sales ${totalSales} exceed ticket count ${ticketCount}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const completed = totalSales === ticketCount;
-  const priorStatus = String(deal.Deal_Status);
-  const targetStatus = completed ? 'Sold' : 'Open';
-
-  if (priorStatus === targetStatus) {
-    return { transaction: false, issue: false };
-  }
-
-  if (!['Bundled', 'Open'].includes(priorStatus)) {
-    createPTPaperworkIssue_(
-      'Unavailable Deal',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `Carry-over deal status was ${priorStatus}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const quantityChange =
-    priorStatus === 'Bundled' && targetStatus === 'Open'
-      ? -1
-      : 0;
-
-  const updates = {
-    Deal_Status: targetStatus
-  };
-
-  if (targetStatus === 'Sold') {
-    updates.Expended_Date = context.date;
-    updates.Expended_Session_ID = context.sessionId;
-  }
-
-  updateRecordRow_('PT_Deals', deal._rowNumber, updates);
-
-  postInventoryTransaction_({
-    effectiveDate: context.date,
-    inventoryType: 'PT',
-    productId: deal.PT_Game_ID,
-    itemId: deal.PT_Deal_ID,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
-    quantityChange: quantityChange,
-    unit: 'Deal',
-    sessionId: context.sessionId,
-    source: SESSION_PROCESSING_SOURCE,
-    notes:
-      `Carry-over block row ${startRow}; ${totalSales}/${ticketCount} sold; ` +
-      `source file ${sourceFile.getId()}.`
-  });
-
-  return { transaction: true, issue: false };
-}
-
-
-function createPTPaperworkIssue_(
-  issueType,
-  deal,
-  formNumber,
-  serialNumber,
-  context,
-  notes
-) {
-  return createInventoryIssue_({
-    inventoryType: 'PT',
-    issueType: issueType,
-    productId: deal ? deal.PT_Game_ID : '',
-    itemId: deal ? deal.PT_Deal_ID : '',
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    sessionId: context.sessionId,
-    expectedQuantity: deal ? 1 : 0,
-    reportedQuantity: 1,
-    discrepancyAmount: deal ? 0 : 1,
-    notes: notes
-  });
-}
-
-
-function createIntegerRange_(first, last) {
-  const output = [];
-
-  for (let value = first; value <= last; value += 1) {
-    output.push(value);
-  }
-
-  return output;
+  SpreadsheetApp.flush();
+  return initializeCurrentBalancesV115();
 }
 
 

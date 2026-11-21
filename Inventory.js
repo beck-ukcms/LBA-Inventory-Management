@@ -183,6 +183,10 @@ function postInventoryTransaction_(data) {
     Notes: data.notes || ''
   });
 
+  if (String(data.inventoryType) === 'Paper' && data.itemId) {
+    adjustPaperCurrentBalance_(data.itemId, quantityChange);
+  }
+
   return transactionId;
 }
 
@@ -719,4 +723,88 @@ function appendInventoryNote_(existingNotes, newNote) {
   }
 
   return `${existing}; ${addition}`;
+}
+
+// =============================================================================
+// V1.15 materialized current balances
+// =============================================================================
+function refreshPTCatalogBalances_() {
+  const catalog = getRecords_('PT_Catalog');
+  const counts = new Map();
+  getRecords_('PT_Deals').forEach((deal) => {
+    const id = String(deal.PT_Game_ID);
+    const value = counts.get(id) || {unbundled:0,bundled:0,open:0};
+    if (deal.Deal_Status === 'Unbundled') value.unbundled += 1;
+    if (deal.Deal_Status === 'Bundled') value.bundled += 1;
+    if (deal.Deal_Status === 'Open') value.open += 1;
+    counts.set(id,value);
+  });
+  const updatedAt = now_();
+  updateRecordRows_('PT_Catalog', catalog.map(row => {
+    const value=counts.get(String(row.PT_Game_ID))||{unbundled:0,bundled:0,open:0};
+    return {rowNumber:row._rowNumber,updates:{Qty_Unbundled:value.unbundled,Qty_Bundled:value.bundled,
+      Qty_Open:value.open,Qty_On_Hand:value.unbundled+value.bundled,Balance_Updated_At:updatedAt}};
+  }));
+  invalidateCatalogCaches_();
+}
+
+function refreshPaperCatalogBalances_() {
+  const catalog = getRecords_('Paper_Catalog');
+  const totals = new Map();
+  getRecords_('Paper_Cases').forEach(row => totals.set(String(row.Paper_ID),(totals.get(String(row.Paper_ID))||0)+Number(row.Current_Packs||0)));
+  const updatedAt=now_();
+  updateRecordRows_('Paper_Catalog',catalog.map(row=>({rowNumber:row._rowNumber,
+    updates:{Qty_On_Hand:totals.get(String(row.Paper_ID))||0,Balance_Updated_At:updatedAt}})));
+  invalidateCatalogCaches_();
+}
+
+function adjustPaperCurrentBalance_(caseId, delta) {
+  if (!caseId || !delta) return;
+  const paperCase=getRecords_('Paper_Cases').find(row=>String(row.Paper_Case_ID)===String(caseId));
+  if (!paperCase) throw new Error(`Paper case ${caseId} was not found for balance update.`);
+  const quantity=Number(paperCase.Current_Packs||0)+Number(delta);
+  updateRecordRow_('Paper_Cases',paperCase._rowNumber,{Current_Packs:quantity,Balance_Updated_At:now_()});
+  refreshPaperCatalogBalances_();
+}
+
+function initializeCurrentBalancesV115() {
+  const transactions=getRecords_('Transactions');
+  const balances=buildPaperBalanceMap_(transactions);
+  const cases=getRecords_('Paper_Cases');
+  updateRecordRows_('Paper_Cases',cases.map(row=>({rowNumber:row._rowNumber,
+    updates:{Current_Packs:balances.get(String(row.Paper_Case_ID))||0,Balance_Updated_At:now_()}})));
+  refreshPaperCatalogBalances_();
+  refreshPTCatalogBalances_();
+  return {ok:true,version:'1.15',paperCases:cases.length};
+}
+/** Shared reconciliation record operations. */
+function createReconciliationRecord_(data) {
+  const expected = integerOrThrow_(data.expectedQuantity, 'Expected Quantity');
+  const observed = integerOrThrow_(data.observedQuantity, 'Observed Quantity');
+  const correction = observed - expected;
+  const id = generateId_('RECONCILIATION', 'REC-', 7);
+  appendRecord_('Reconciliation_Records', {
+    Reconciliation_ID: id,
+    Timestamp: now_(),
+    Inventory_Type: data.inventoryType,
+    Product_ID: data.productId,
+    Item_ID: data.itemId || '',
+    Form_Number: data.formNumber || '',
+    Serial_Number: data.serialNumber,
+    Reconciliation_Type: data.reconciliationType || 'Inventory Check',
+    Expected_Quantity: expected,
+    Observed_Quantity: observed,
+    Correction_Amount: correction,
+    Observed_PT_Status: data.observedPTStatus || '',
+    Issue_ID: data.issueId || '',
+    Correction_Transaction_ID: '',
+    Notes: data.notes || '',
+  });
+  return {id, correction};
+}
+
+function linkReconciliationTransaction_(reconciliationId, transactionId) {
+  const record = getRecords_('Reconciliation_Records').find(row => String(row.Reconciliation_ID) === String(reconciliationId));
+  if (!record) throw new Error(`Reconciliation ${reconciliationId} was not found.`);
+  updateRecordRow_('Reconciliation_Records', record._rowNumber, {Correction_Transaction_ID: transactionId});
 }

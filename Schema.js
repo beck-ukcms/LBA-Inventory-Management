@@ -54,10 +54,11 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
         Game_Type: ['Daub', 'Horse Race', 'Under Seal', 'Mixed', 'Other'],
       },
       checkboxes: ['Active'],
-      integers: ['Display_Order', 'Cards_Per_Deal', 'Deals_Per_Case', 'Target_On_Hand', 'Target_Bundled'],
+      integers: ['Display_Order', 'Cards_Per_Deal', 'Deals_Per_Case', 'Target_On_Hand', 'Target_Bundled', 'Qty_Unbundled', 'Qty_Bundled', 'Qty_Open', 'Qty_On_Hand'],
       decimals: [],
       currency: ['Price_Per_Card', 'Payout_Per_Deal', 'Manufacturer_Cost_Per_Deal', 'Gross_Receipts_Per_Deal', 'Gaming_Income_Before_Cost', 'Net_Income_Per_Deal', 'Manufacturer_Cost_Per_Case'],
       percent: ['Net_Income_Per_Patron_Dollar', 'Manufacturer_Cost_Per_Patron_Dollar'],
+      timestamps: ['Balance_Updated_At'],
       formulas: {
         Gross_Receipts_Per_Deal: '=ARRAYFORMULA(IF(A2:A="","",H2:H*J2:J))',
         Gaming_Income_Before_Cost: '=ARRAYFORMULA(IF(A2:A="","",M2:M-K2:K))',
@@ -95,6 +96,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       decimals: ['Packs_Per_Box'],
       currency: ['Manufacturer_Cost_Per_Case', 'Manufacturer_Cost_Per_Pack', 'Sales_Price_Per_Pack', 'Net_Income_Per_Pack'],
       percent: ['Net_Income_Per_Patron_Dollar', 'Manufacturer_Cost_Per_Patron_Dollar'],
+      timestamps: ['Balance_Updated_At'],
       formulas: {
         Packs_Per_Case: '=ARRAYFORMULA(IF(A2:A="","",F2:F*G2:G))',
         Manufacturer_Cost_Per_Pack: '=ARRAYFORMULA(IF(A2:A="","",IFERROR(I2:I/H2:H,0)))',
@@ -137,13 +139,16 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
         'Opened_Date',
         'Expended_Date',
         'Notes',
+        'Current_Packs',
+        'Balance_Updated_At',
       ],
-      widths: [125, 95, 140, 110, 110, 110, 115, 240],
+      widths: [125, 95, 140, 110, 110, 110, 115, 240, 110, 155],
       dropdowns: {
         Case_Status: ['Unopened', 'Opened', 'Expended', 'Missing'],
       },
-      checkboxes: [], integers: [], decimals: [], currency: [], percent: [], formulas: {},
+      checkboxes: [], integers: ['Current_Packs'], decimals: [], currency: [], percent: [], formulas: {},
       dates: ['Received_Date', 'Opened_Date', 'Expended_Date'],
+      timestamps: ['Balance_Updated_At'],
     },
 
     Transactions: {
