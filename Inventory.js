@@ -824,7 +824,6 @@ function refreshPTCatalogBalances_() {
     return {rowNumber:row._rowNumber,updates:{Qty_Unbundled:value.unbundled,Qty_Bundled:value.bundled,
       Qty_Open:value.open,Qty_On_Hand:value.unbundled+value.bundled,Balance_Updated_At:updatedAt}};
   }));
-  invalidateCatalogCaches_();
 }
 
 function refreshPaperCatalogBalances_() {
@@ -834,7 +833,6 @@ function refreshPaperCatalogBalances_() {
   const updatedAt=now_();
   updateRecordRows_('Paper_Catalog',catalog.map(row=>({rowNumber:row._rowNumber,
     updates:{Qty_On_Hand:totals.get(String(row.Paper_ID))||0,Balance_Updated_At:updatedAt}})));
-  invalidateCatalogCaches_();
 }
 
 function adjustPaperCurrentBalance_(caseId, delta) {

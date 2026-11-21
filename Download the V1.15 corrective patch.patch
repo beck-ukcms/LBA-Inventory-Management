@@ -1,0 +1,326 @@
+diff --git a/Code.js b/Code.js
+index a40e2cd..4073795 100644
+--- a/Code.js
++++ b/Code.js
+@@ -648,6 +648,96 @@ function updateRecordRow_(
+ }
+ 
+ 
++/**
++ * Updates multiple existing record rows.
++ *
++ * Each item must contain:
++ *
++ *   {
++ *     rowNumber: 12,
++ *     updates: {
++ *       Current_Packs: 24,
++ *       Balance_Updated_At: new Date()
++ *     }
++ *   }
++ *
++ * Values for adjacent columns are written together. This avoids the
++ * cell-by-cell writes performed by updateRecordRow_() while preserving
++ * columns that are not part of the requested update.
++ *
++ * @param {string} sheetName
++ * @param {Object[]} rowUpdates
++ */
++function updateRecordRows_(sheetName, rowUpdates) {
++  const updatesToApply = Array.isArray(rowUpdates)
++    ? rowUpdates.filter((item) => {
++        return (
++          item &&
++          Number.isInteger(Number(item.rowNumber)) &&
++          Number(item.rowNumber) >= 2 &&
++          item.updates &&
++          Object.keys(item.updates).length > 0
++        );
++      })
++    : [];
++
++  if (!updatesToApply.length) {
++    return;
++  }
++
++  const sheet = getSheetOrThrow_(sheetName);
++  const headerMap = getHeaderMap_(sheet);
++
++  updatesToApply.forEach((item) => {
++    const entries = Object.entries(item.updates)
++      .map(([header, value]) => {
++        if (!(header in headerMap)) {
++          throw new Error(`Unknown ${sheetName} column: ${header}`);
++        }
++
++        return {
++          column: headerMap[header] + 1,
++          value: value
++        };
++      })
++      .sort((first, second) => first.column - second.column);
++
++    let group = [];
++
++    const writeGroup = () => {
++      if (!group.length) {
++        return;
++      }
++
++      sheet
++        .getRange(
++          Number(item.rowNumber),
++          group[0].column,
++          1,
++          group.length
++        )
++        .setValues([
++          group.map((entry) => entry.value)
++        ]);
++
++      group = [];
++    };
++
++    entries.forEach((entry) => {
++      if (
++        group.length &&
++        entry.column !== group[group.length - 1].column + 1
++      ) {
++        writeGroup();
++      }
++
++      group.push(entry);
++    });
++
++    writeGroup();
++  });
++}
++
+ /**
+  * Generates a persistent unique application ID.
+  *
+diff --git a/Inventory.js b/Inventory.js
+index b1a53ef..e4c2e42 100644
+--- a/Inventory.js
++++ b/Inventory.js
+@@ -824,7 +824,6 @@ function refreshPTCatalogBalances_() {
+     return {rowNumber:row._rowNumber,updates:{Qty_Unbundled:value.unbundled,Qty_Bundled:value.bundled,
+       Qty_Open:value.open,Qty_On_Hand:value.unbundled+value.bundled,Balance_Updated_At:updatedAt}};
+   }));
+-  invalidateCatalogCaches_();
+ }
+ 
+ function refreshPaperCatalogBalances_() {
+@@ -834,7 +833,6 @@ function refreshPaperCatalogBalances_() {
+   const updatedAt=now_();
+   updateRecordRows_('Paper_Catalog',catalog.map(row=>({rowNumber:row._rowNumber,
+     updates:{Qty_On_Hand:totals.get(String(row.Paper_ID))||0,Balance_Updated_At:updatedAt}})));
+-  invalidateCatalogCaches_();
+ }
+ 
+ function adjustPaperCurrentBalance_(caseId, delta) {
+diff --git a/Schema.js b/Schema.js
+index 551ee5f..d228d4a 100644
+--- a/Schema.js
++++ b/Schema.js
+@@ -48,8 +48,13 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
+         'Target_On_Hand',
+         'Target_Bundled',
+         'Notes',
++        'Qty_Unbundled',
++        'Qty_Bundled',
++        'Qty_Open',
++        'Qty_On_Hand',
++        'Balance_Updated_At',
+       ],
+-      widths: [110, 180, 110, 145, 190, 75, 95, 110, 110, 105, 120, 150, 145, 165, 135, 175, 210, 165, 120, 120, 240],
++      widths: [110, 180, 110, 145, 190, 75, 95, 110, 110, 105, 120, 150, 145, 165, 135, 175, 210, 165, 120, 120, 240, 110, 110, 95, 110, 155],
+       dropdowns: {
+         Game_Type: ['Daub', 'Horse Race', 'Under Seal', 'Mixed', 'Other'],
+       },
+@@ -88,8 +93,10 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
+         'Manufacturer_Cost_Per_Patron_Dollar',
+         'Target_On_Hand',
+         'Notes',
++        'Qty_On_Hand',
++        'Balance_Updated_At',
+       ],
+-      widths: [95, 115, 210, 75, 95, 110, 115, 115, 165, 165, 135, 135, 175, 210, 120, 240],
++      widths: [95, 115, 210, 75, 95, 110, 115, 115, 165, 165, 135, 135, 175, 210, 120, 240, 110, 155],
+       dropdowns: {},
+       checkboxes: ['Active'],
+       integers: ['Display_Order', 'Boxes_Per_Case', 'Packs_Per_Case', 'Target_On_Hand'],
+diff --git a/SchemaPatchV115.js b/SchemaPatchV115.js
+index 44422f0..c16ad0c 100644
+--- a/SchemaPatchV115.js
++++ b/SchemaPatchV115.js
+@@ -1,24 +1,151 @@
+-/** One-time V1.15 schema expansion and balance initialization. */
++/**
++ * One-time V1.15 schema expansion and balance initialization.
++ *
++ * The function is idempotent. It may be rerun after a prior interrupted
++ * attempt. Existing V1.15 columns are retained and balances are rebuilt from
++ * the authoritative Transactions ledger.
++ */
+ function applySchemaV115Patch() {
+   const additions = {
+-    PT_Catalog: ['Qty_Unbundled','Qty_Bundled','Qty_Open','Qty_On_Hand','Balance_Updated_At'],
+-    Paper_Catalog: ['Qty_On_Hand','Balance_Updated_At'],
+-    Paper_Cases: ['Current_Packs','Balance_Updated_At']
++    PT_Catalog: [
++      { header: 'Qty_Unbundled', width: 110, format: '0' },
++      { header: 'Qty_Bundled', width: 110, format: '0' },
++      { header: 'Qty_Open', width: 95, format: '0' },
++      { header: 'Qty_On_Hand', width: 110, format: '0' },
++      {
++        header: 'Balance_Updated_At',
++        width: 155,
++        format: 'm/d/yyyy h:mm:ss am/pm'
++      }
++    ],
++    Paper_Catalog: [
++      { header: 'Qty_On_Hand', width: 110, format: '0' },
++      {
++        header: 'Balance_Updated_At',
++        width: 155,
++        format: 'm/d/yyyy h:mm:ss am/pm'
++      }
++    ],
++    Paper_Cases: [
++      { header: 'Current_Packs', width: 110, format: '0' },
++      {
++        header: 'Balance_Updated_At',
++        width: 155,
++        format: 'm/d/yyyy h:mm:ss am/pm'
++      }
++    ]
+   };
+-  Object.entries(additions).forEach(([sheetName,headers]) => {
+-    const sheet=getSheetOrThrow_(sheetName);
+-    const existing=sheet.getRange(1,1,1,sheet.getLastColumn()).getDisplayValues()[0];
+-    const missing=headers.filter(header=>!existing.includes(header));
+-    if (!missing.length) return;
+-    const required=existing.length+missing.length;
+-    if (sheet.getMaxColumns()<required) sheet.insertColumnsAfter(sheet.getMaxColumns(),required-sheet.getMaxColumns());
+-    sheet.getRange(1,existing.length+1,1,missing.length).setValues([missing]);
+-    const table=getNativeTableForSheet_(sheet);
+-    const updated=JSON.parse(JSON.stringify(table));
+-    updated.range.endColumnIndex=required;
+-    updated.columnProperties=[...(updated.columnProperties||[]),...missing.map((header,index)=>({columnIndex:existing.length+index,columnName:header}))];
+-    Sheets.Spreadsheets.batchUpdate({requests:[{updateTable:{table:updated,fields:'range,columnProperties'}}]},getInventorySpreadsheet_().getId());
++
++  const addedHeaders = {};
++
++  Object.entries(additions).forEach(([sheetName, definitions]) => {
++    const sheet = getSheetOrThrow_(sheetName);
++    const existingHeaders = sheet
++      .getRange(1, 1, 1, sheet.getLastColumn())
++      .getDisplayValues()[0];
++
++    const missingDefinitions = definitions.filter((definition) => {
++      return !existingHeaders.includes(definition.header);
++    });
++
++    if (missingDefinitions.length) {
++      const firstNewColumn = existingHeaders.length + 1;
++      const requiredColumnCount =
++        existingHeaders.length + missingDefinitions.length;
++
++      if (sheet.getMaxColumns() < requiredColumnCount) {
++        sheet.insertColumnsAfter(
++          sheet.getMaxColumns(),
++          requiredColumnCount - sheet.getMaxColumns()
++        );
++      }
++
++      sheet
++        .getRange(
++          1,
++          firstNewColumn,
++          1,
++          missingDefinitions.length
++        )
++        .setValues([
++          missingDefinitions.map((definition) => definition.header)
++        ])
++        .setFontWeight('bold')
++        .setFontColor('#ffffff')
++        .setBackground('#1f4e78')
++        .setHorizontalAlignment('center')
++        .setWrap(true);
++
++      missingDefinitions.forEach((definition, offset) => {
++        const column = firstNewColumn + offset;
++        sheet.setColumnWidth(column, definition.width);
++        sheet
++          .getRange(2, column, sheet.getMaxRows() - 1, 1)
++          .setNumberFormat(definition.format);
++      });
++
++      const table = getNativeTableForSheet_(sheet);
++
++      if (!table) {
++        throw new Error(
++          `${sheetName} native Table was not found. ` +
++          'The worksheet columns were added, but the Table must be repaired.'
++        );
++      }
++
++      const updatedTable = JSON.parse(JSON.stringify(table));
++      updatedTable.range.endColumnIndex = requiredColumnCount;
++      updatedTable.columnProperties = [
++        ...(updatedTable.columnProperties || []),
++        ...missingDefinitions.map((definition, index) => {
++          return {
++            columnIndex: existingHeaders.length + index,
++            columnName: definition.header
++          };
++        })
++      ];
++
++      Sheets.Spreadsheets.batchUpdate(
++        {
++          requests: [
++            {
++              updateTable: {
++                table: updatedTable,
++                fields: 'range,columnProperties'
++              }
++            }
++          ]
++        },
++        getInventorySpreadsheet_().getId()
++      );
++
++      addedHeaders[sheetName] = missingDefinitions.map(
++        (definition) => definition.header
++      );
++    }
++
++    const currentHeaderMap = getHeaderMap_(sheet);
++
++    definitions.forEach((definition) => {
++      const zeroBasedColumn = currentHeaderMap[definition.header];
++
++      if (zeroBasedColumn == null) {
++        throw new Error(
++          `${sheetName}.${definition.header} is unavailable after migration.`
++        );
++      }
++
++      const column = zeroBasedColumn + 1;
++      sheet.setColumnWidth(column, definition.width);
++      sheet
++        .getRange(2, column, sheet.getMaxRows() - 1, 1)
++        .setNumberFormat(definition.format);
++    });
+   });
++
+   SpreadsheetApp.flush();
+-  return initializeCurrentBalancesV115();
++
++  const result = initializeCurrentBalancesV115();
++  result.addedHeaders = addedHeaders;
++  return result;
+ }

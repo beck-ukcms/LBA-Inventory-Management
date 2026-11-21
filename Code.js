@@ -649,6 +649,96 @@ function updateRecordRow_(
 
 
 /**
+ * Updates multiple existing record rows.
+ *
+ * Each item must contain:
+ *
+ *   {
+ *     rowNumber: 12,
+ *     updates: {
+ *       Current_Packs: 24,
+ *       Balance_Updated_At: new Date()
+ *     }
+ *   }
+ *
+ * Values for adjacent columns are written together. This avoids the
+ * cell-by-cell writes performed by updateRecordRow_() while preserving
+ * columns that are not part of the requested update.
+ *
+ * @param {string} sheetName
+ * @param {Object[]} rowUpdates
+ */
+function updateRecordRows_(sheetName, rowUpdates) {
+  const updatesToApply = Array.isArray(rowUpdates)
+    ? rowUpdates.filter((item) => {
+        return (
+          item &&
+          Number.isInteger(Number(item.rowNumber)) &&
+          Number(item.rowNumber) >= 2 &&
+          item.updates &&
+          Object.keys(item.updates).length > 0
+        );
+      })
+    : [];
+
+  if (!updatesToApply.length) {
+    return;
+  }
+
+  const sheet = getSheetOrThrow_(sheetName);
+  const headerMap = getHeaderMap_(sheet);
+
+  updatesToApply.forEach((item) => {
+    const entries = Object.entries(item.updates)
+      .map(([header, value]) => {
+        if (!(header in headerMap)) {
+          throw new Error(`Unknown ${sheetName} column: ${header}`);
+        }
+
+        return {
+          column: headerMap[header] + 1,
+          value: value
+        };
+      })
+      .sort((first, second) => first.column - second.column);
+
+    let group = [];
+
+    const writeGroup = () => {
+      if (!group.length) {
+        return;
+      }
+
+      sheet
+        .getRange(
+          Number(item.rowNumber),
+          group[0].column,
+          1,
+          group.length
+        )
+        .setValues([
+          group.map((entry) => entry.value)
+        ]);
+
+      group = [];
+    };
+
+    entries.forEach((entry) => {
+      if (
+        group.length &&
+        entry.column !== group[group.length - 1].column + 1
+      ) {
+        writeGroup();
+      }
+
+      group.push(entry);
+    });
+
+    writeGroup();
+  });
+}
+
+/**
  * Generates a persistent unique application ID.
  *
  * Counts are maintained in Script Properties rather than being

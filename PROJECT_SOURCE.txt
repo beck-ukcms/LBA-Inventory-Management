@@ -2275,6 +2275,85 @@ function appendInventoryNote_(existingNotes, newNote) {
   return `${existing}; ${addition}`;
 }
 
+/**
+ * Builds the current pack balance for every Paper case from the
+ * authoritative Transactions ledger.
+ *
+ * This function is used only for initialization, validation, and
+ * maintenance operations. Normal inventory operations use the
+ * materialized Current_Packs values instead of rescanning Transactions.
+ *
+ * @param {Object[]} transactions
+ * @return {Map<string, number>}
+ */
+function buildPaperBalanceMap_(transactions) {
+
+  const balancesByCaseId =
+    new Map();
+
+
+  (transactions || []).forEach(
+    (transaction) => {
+
+      if (
+        String(transaction.Inventory_Type) !==
+        'Paper'
+      ) {
+
+        return;
+      }
+
+
+      const paperCaseId =
+        normalizeText_(
+          transaction.Item_ID
+        );
+
+
+      if (!paperCaseId) {
+
+        return;
+      }
+
+
+      const quantityChange =
+        Number(
+          transaction.Quantity_Change || 0
+        );
+
+
+      if (
+        !Number.isFinite(
+          quantityChange
+        )
+      ) {
+
+        throw new Error(
+          `Transaction ${transaction.Transaction_ID || '(unknown)'} ` +
+          'contains an invalid Paper quantity.'
+        );
+      }
+
+
+      const currentBalance =
+        balancesByCaseId.get(
+          paperCaseId
+        ) || 0;
+
+
+      balancesByCaseId.set(
+        paperCaseId,
+        currentBalance + quantityChange
+      );
+    }
+  );
+
+
+  return balancesByCaseId;
+}
+
+
+
 // =============================================================================
 // V1.15 materialized current balances
 // =============================================================================
