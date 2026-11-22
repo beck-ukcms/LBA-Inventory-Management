@@ -1,5 +1,5 @@
 ================================================================
-GIT COMMIT: 45b8e5c35136d988edc26bd913feb02fa3ed158f
+GIT COMMIT: aa0b31bb9c39b8ed483df136dab61e41bf04b38a
 ================================================================
 
 ================================================================
@@ -533,25 +533,26 @@ FILE: AppCommon.html
     $(modalId).classList.remove('show');
   }
 
+function localIsoDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
 
-    function localIsoDate(date = new Date()) {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-$1
-    return String(value ?? '').replace(
-      /[&<>"']/g,
-      (character) => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-      })[character]
-    );
-  }
+  return `${year}-${month}-${day}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(
+    /[&<>"']/g,
+    (character) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[character]
+  );
+}
 
 
   /**
