@@ -67,10 +67,13 @@
           Game / Form
         </label>
 
-        <select
+        <input
           id="order-pt-form"
+          list="order-pt-form-list"
+          autocomplete="off"
           onchange="showSelectedPTCaseSize()"
-        ></select>
+        >
+        <datalist id="order-pt-form-list"></datalist>
       </div>
 
 
@@ -475,11 +478,8 @@
 
     showScreen('ordering-screen');
 
-    $('order-pt-date').valueAsDate =
-      new Date();
-
-    $('order-paper-date').valueAsDate =
-      new Date();
+    $('order-pt-date').value = localIsoDate();
+    $('order-paper-date').value = localIsoDate();
 
     clearStatus('order-status');
 
@@ -521,19 +521,11 @@
     );
 
 
-    $('order-pt-form').innerHTML =
-      '<option value="">Select game/form...</option>' +
-
-      ORDER_CATALOGS.pt
-        .map((option, index) => {
-
-          return (
-            `<option value="${index}">` +
-            `${escapeHtml(option.label)}` +
-            '</option>'
-          );
-        })
-        .join('');
+    $('order-pt-form-list').innerHTML = ORDER_CATALOGS.pt
+      .map((option) => {
+        return `<option value="${escapeHtml(option.label)}"></option>`;
+      })
+      .join('');
 
 
     $('order-paper-type').innerHTML =
@@ -598,10 +590,13 @@
     }
 
 
-    const selected =
-      ORDER_CATALOGS.pt[
-        Number(selectedIndex)
-      ];
+    const selected = ORDER_CATALOGS.pt.find((option) => {
+      return option.label === selectedIndex;
+    });
+    if (!selected) {
+      $('order-pt-case-size-display').textContent = 'Select a valid game';
+      return;
+    }
 
 
     $('order-pt-case-size-display').textContent =
@@ -630,10 +625,17 @@
     }
 
 
-    const selected =
-      ORDER_CATALOGS.pt[
-        Number(selectedIndex)
-      ];
+    const selected = ORDER_CATALOGS.pt.find((option) => {
+      return option.label === selectedIndex;
+    });
+    if (!selected) {
+      setStatus(
+        'order-status',
+        'Select a valid PT game/form.',
+        true
+      );
+      return;
+    }
 
 
     try {

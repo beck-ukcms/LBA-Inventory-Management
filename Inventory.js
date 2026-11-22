@@ -259,59 +259,75 @@ function validateAnonymousPTStockAddition_(data) {
  * Validation is completed before the first write occurs. Blank serial numbers
  * are legitimate and can occur on many deals of the same Form Number.
  */
-function createAnonymousPTStock_(data) {
-  const validated = validateAnonymousPTStockAddition_(data);
-  const createdRecords = [];
-
-  try {
-    for (
-      let dealNumber = 0;
-      dealNumber < validated.quantity;
-      dealNumber += 1
-    ) {
-      const dealId = createPTDeal_({
-        gameId: validated.gameId,
-        formNumber: validated.formNumber,
-        serialNumber: '',
-        status: 'Unbundled',
-        receivedDate: data.effectiveDate || now_(),
-        notes: data.notes || ''
-      });
-
-      createdRecords.push({
-        dealId: dealId,
-        transactionId: ''
-      });
-
-      const transactionId = postInventoryTransaction_({
-        effectiveDate: data.effectiveDate || now_(),
-        inventoryType: 'PT',
-        productId: validated.gameId,
-        itemId: dealId,
-        formNumber: validated.formNumber,
-        serialNumber: '',
-        transactionType: data.transactionType || 'Received',
-        quantityChange: 1,
-        unit: 'Deal',
-        source: data.source,
-        reconciliationId: data.reconciliationId || '',
-        notes: data.notes || ''
-      });
-
-      createdRecords[createdRecords.length - 1].transactionId = transactionId;
-    }
-  } catch (error) {
-    rollbackNewPTStockRecords_(createdRecords);
-
-    throw new Error(
-      `PT stock addition failed and was rolled back: ${error.message}`
+  function createAnonymousPTStock_(data) {
+    const validated = validateAnonymousPTStockAddition_(data);
+    const effectiveDate = data.effectiveDate || now_();
+    const timestamp = now_();
+    const dealIds = generateIds_(
+      'PT_DEAL',
+      'PTD-',
+      6,
+      validated.quantity
     );
+    const transactionIds = generateIds_(
+      'TRANSACTION',
+      'TX-',
+      7,
+      validated.quantity
+    );
+    appendRecords_(
+      'PT_Deals',
+      dealIds.map((dealId) => {
+        return {
+          PT_Deal_ID: dealId,
+          PT_Game_ID: validated.gameId,
+          Form_Number: validated.formNumber,
+          Serial_Number: '',
+          Received_Date: effectiveDate,
+          Deal_Status: 'Unbundled',
+          Bundled_Date: '',
+          Expended_Date: '',
+          Expended_Session_ID: '',
+          Notes: data.notes || ''
+        };
+      })
+    );
+    try {
+      appendRecords_(
+        'Transactions',
+        dealIds.map((dealId, index) => {
+          return {
+            Transaction_ID: transactionIds[index],
+            Effective_Date: effectiveDate,
+            Timestamp: timestamp,
+            Inventory_Type: 'PT',
+            Product_ID: validated.gameId,
+            Item_ID: dealId,
+            Form_Number: validated.formNumber,
+            Serial_Number: '',
+            Transaction_Type: data.transactionType || 'Received',
+            Quantity_Change: 1,
+            Unit: 'Deal',
+            Session_ID: '',
+            Source: data.source,
+            Reconciliation_ID: data.reconciliationId || '',
+            Notes: data.notes || ''
+          };
+        })
+      );
+    } catch (error) {
+      deleteRowsByIdSet_(
+        'PT_Deals',
+        'PT_Deal_ID',
+        new Set(dealIds)
+      );
+      throw new Error(
+        `PT stock addition failed and was rolled back: ${error.message}`
+      );
+    }
+    refreshPTCatalogBalances_();
+    return dealIds;
   }
-
-  return createdRecords.map((record) => record.dealId);
-}
-
-
 /**
  * Best-effort rollback used only for records created during the current failed
  * multi-deal operation.
@@ -381,6 +397,7 @@ function deleteRowsByIdSet_(
   rowsToDelete.forEach((rowNumber) => {
     sheet.deleteRow(rowNumber);
   });
+    invalidateRecordCache_(sheetName);
 }
 
 
@@ -408,55 +425,84 @@ function createPaperCase_(data) {
 }
 
 
-function createAnonymousPaperStock_(data) {
-  const cases = integerOrThrow_(
-    data.cases,
-    'Paper cases',
-    { allowZero: false }
-  );
-
-  const packsPerCase = integerOrThrow_(
-    data.packsPerCase,
-    'Packs per Case',
-    { allowZero: false }
-  );
-
-  const caseIds = [];
-
-  for (
-    let caseNumber = 0;
-    caseNumber < cases;
-    caseNumber += 1
-  ) {
-    const caseId = createPaperCase_({
-      paperId: data.paperId,
-      serialNumber: '',
-      status: 'Unopened',
-      receivedDate: data.effectiveDate,
-      notes: data.notes
-    });
-
-    caseIds.push(caseId);
-
-    postInventoryTransaction_({
-      effectiveDate: data.effectiveDate,
-      inventoryType: 'Paper',
-      productId: data.paperId,
-      itemId: caseId,
-      formNumber: '',
-      serialNumber: '',
-      transactionType: data.transactionType || 'Received',
-      quantityChange: packsPerCase,
-      unit: 'Pack',
-      source: data.source,
-      notes: data.notes || ''
-    });
+  function createAnonymousPaperStock_(data) {
+    const cases = integerOrThrow_(
+      data.cases,
+      'Paper cases',
+      { allowZero: false }
+    );
+    const packsPerCase = integerOrThrow_(
+      data.packsPerCase,
+      'Packs per Case',
+      { allowZero: false }
+    );
+    const effectiveDate = data.effectiveDate || now_();
+    const timestamp = now_();
+    const caseIds = generateIds_(
+      'PAPER_CASE',
+      'PC-',
+      6,
+      cases
+    );
+    const transactionIds = generateIds_(
+      'TRANSACTION',
+      'TX-',
+      7,
+      cases
+    );
+    appendRecords_(
+      'Paper_Cases',
+      caseIds.map((caseId) => {
+        return {
+          Paper_Case_ID: caseId,
+          Paper_ID: data.paperId,
+          Serial_Number: '',
+          Received_Date: effectiveDate,
+          Case_Status: 'Unopened',
+          Opened_Date: '',
+          Expended_Date: '',
+          Notes: data.notes || '',
+          Current_Packs: packsPerCase,
+          Balance_Updated_At: timestamp
+        };
+      })
+    );
+    try {
+      appendRecords_(
+        'Transactions',
+        caseIds.map((caseId, index) => {
+          return {
+            Transaction_ID: transactionIds[index],
+            Effective_Date: effectiveDate,
+            Timestamp: timestamp,
+            Inventory_Type: 'Paper',
+            Product_ID: data.paperId,
+            Item_ID: caseId,
+            Form_Number: '',
+            Serial_Number: '',
+            Transaction_Type: data.transactionType || 'Received',
+            Quantity_Change: packsPerCase,
+            Unit: 'Pack',
+            Session_ID: '',
+            Source: data.source,
+            Reconciliation_ID: '',
+            Notes: data.notes || ''
+          };
+        })
+      );
+    } catch (error) {
+      deleteRowsByIdSet_(
+        'Paper_Cases',
+        'Paper_Case_ID',
+        new Set(caseIds)
+      );
+      throw new Error(
+        `Paper stock addition failed and was rolled back: ${error.message}`
+      );
+    }
+    refreshPaperCatalogBalances_();
+    return caseIds;
   }
-
-  return caseIds;
-}
-
-
 function createInventoryIssue_(data) {
   const issueId = generateId_(
     'ISSUE',

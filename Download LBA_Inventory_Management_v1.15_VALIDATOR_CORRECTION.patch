@@ -1,0 +1,38 @@
+diff --git a/Schema.js b/Schema.js
+--- a/Schema.js
++++ b/Schema.js
+@@ -60,14 +60,9 @@
+       currency: ['Price_Per_Card', 'Payout_Per_Deal', 'Manufacturer_Cost_Per_Deal', 'Gross_Receipts_Per_Deal', 'Gaming_Income_Before_Cost', 'Net_Income_Per_Deal', 'Manufacturer_Cost_Per_Case'],
+       percent: ['Net_Income_Per_Patron_Dollar', 'Manufacturer_Cost_Per_Patron_Dollar'],
+       timestamps: ['Balance_Updated_At'],
+-      formulas: {
+-        Gross_Receipts_Per_Deal: '=ARRAYFORMULA(IF(A2:A="","",H2:H*J2:J))',
+-        Gaming_Income_Before_Cost: '=ARRAYFORMULA(IF(A2:A="","",M2:M-K2:K))',
+-        Net_Income_Per_Deal: '=ARRAYFORMULA(IF(A2:A="","",M2:M-K2:K-L2:L))',
+-        Net_Income_Per_Patron_Dollar: '=ARRAYFORMULA(IF(A2:A="","",IFERROR(O2:O/M2:M,0)))',
+-        Manufacturer_Cost_Per_Patron_Dollar: '=ARRAYFORMULA(IF(A2:A="","",IFERROR(L2:L/M2:M,0)))',
+-        Manufacturer_Cost_Per_Case: '=ARRAYFORMULA(IF(A2:A="","",L2:L*I2:I))',
+-      },
++      // Catalog-derived fields are materialized by Catalog.js.
++      // They are stored values, not worksheet formulas.
++      formulas: {},
+     },
+ 
+     Paper_Catalog: {
+@@ -98,13 +93,9 @@
+       currency: ['Manufacturer_Cost_Per_Case', 'Manufacturer_Cost_Per_Pack', 'Sales_Price_Per_Pack', 'Net_Income_Per_Pack'],
+       percent: ['Net_Income_Per_Patron_Dollar', 'Manufacturer_Cost_Per_Patron_Dollar'],
+       timestamps: ['Balance_Updated_At'],
+-      formulas: {
+-        Packs_Per_Case: '=ARRAYFORMULA(IF(A2:A="","",F2:F*G2:G))',
+-        Manufacturer_Cost_Per_Pack: '=ARRAYFORMULA(IF(A2:A="","",IFERROR(I2:I/H2:H,0)))',
+-        Net_Income_Per_Pack: '=ARRAYFORMULA(IF(A2:A="","",K2:K-J2:J))',
+-        Net_Income_Per_Patron_Dollar: '=ARRAYFORMULA(IF(A2:A="","",IFERROR(L2:L/K2:K,0)))',
+-        Manufacturer_Cost_Per_Patron_Dollar: '=ARRAYFORMULA(IF(A2:A="","",IFERROR(J2:J/K2:K,0)))',
+-      },
++      // Catalog-derived fields are materialized by Catalog.js.
++      // They are stored values, not worksheet formulas.
++      formulas: {},
+     },
+ 
+     PT_Deals: {

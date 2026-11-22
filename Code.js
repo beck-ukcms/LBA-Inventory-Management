@@ -153,80 +153,40 @@ function getHeaderMap_(sheet) {
  * @param {string} sheetName
  * @return {Object[]}
  */
+const EXECUTION_RECORD_CACHE_ = Object.create(null);
+function invalidateRecordCache_(sheetName) {
+  delete EXECUTION_RECORD_CACHE_[sheetName];
+}
 function getRecords_(sheetName) {
-
+  if (EXECUTION_RECORD_CACHE_[sheetName]) {
+    return EXECUTION_RECORD_CACHE_[sheetName].map((record) => {
+      return Object.assign({}, record);
+    });
+  }
   const sheet = getSheetOrThrow_(sheetName);
-
   const lastRow = sheet.getLastRow();
-
   const lastColumn = sheet.getLastColumn();
-
-  if (
-    lastRow < 2 ||
-    lastColumn < 1
-  ) {
-
+  if (lastRow < 2 || lastColumn < 1) {
+    EXECUTION_RECORD_CACHE_[sheetName] = [];
     return [];
   }
-
-  const headers = sheet
-    .getRange(
-      1,
-      1,
-      1,
-      lastColumn
-    )
-    .getDisplayValues()[0];
-
-  const values = sheet
-    .getRange(
-      2,
-      1,
-      lastRow - 1,
-      lastColumn
-    )
-    .getValues();
-
-  /*
-   * Every inventory data table uses column A as its permanent record ID.
-   * A formula-only row is not a record when column A is blank.
-   */
-  return values
-    .map(
-      (row, rowOffset) => {
-
-        return {
-          row: row,
-          rowNumber: rowOffset + 2
-        };
-      }
-    )
-    .filter(
-      (entry) => {
-
-        return normalizeText_(entry.row[0]) !== '';
-      }
-    )
-    .map(
-      (entry) => {
-
-        const record = {
-          _rowNumber: entry.rowNumber
-        };
-
-        headers.forEach(
-          (header, index) => {
-
-            record[header] = entry.row[index];
-          }
-        );
-
-        return record;
-      }
-    );
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+  const values = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues();
+  const records = values
+    .map((row, rowOffset) => {
+      return { row: row, rowNumber: rowOffset + 2 };
+    })
+    .filter((entry) => normalizeText_(entry.row[0]) !== '')
+    .map((entry) => {
+      const record = { _rowNumber: entry.rowNumber };
+      headers.forEach((header, index) => {
+        record[header] = entry.row[index];
+      });
+      return record;
+    });
+  EXECUTION_RECORD_CACHE_[sheetName] = records;
+  return records.map((record) => Object.assign({}, record));
 }
-
-
 /**
  * Appends a record to a worksheet using the Google Sheets API.
  *
@@ -250,94 +210,98 @@ function getRecords_(sheetName) {
  * @param {Object} record
  * @return {number} Worksheet row number containing the appended record.
  */
-function appendRecord_(sheetName, record) {
-
-  const sheet = getSheetOrThrow_(sheetName);
-
-  const lastColumn = sheet.getLastColumn();
-
-  if (lastColumn < 1) {
-
-    throw new Error(
-      `Cannot append to ${sheetName}: the sheet has no header columns.`
-    );
+  function appendRecord_(sheetName, record) {
+    return appendRecords_(sheetName, [record])[0];
   }
-
-  const headers = sheet
-    .getRange(
-      1,
-      1,
-      1,
-      lastColumn
-    )
-    .getDisplayValues()[0];
-
-  const primaryHeader = headers[0];
-
-  const primaryValue =
-    Object.prototype.hasOwnProperty.call(
-      record,
-      primaryHeader
-    )
-      ? normalizeText_(record[primaryHeader])
-      : '';
-
-  if (!primaryValue) {
-
-    throw new Error(
-      `Cannot append to ${sheetName}: ${primaryHeader} is required.`
-    );
-  }
-
-  const table = getNativeTableForSheet_(sheet);
-
-  if (!table) {
-
-    throw new Error(
-      `No native Google Sheets Table was found on ${sheetName}.`
-    );
-  }
-
-  const targetRow = findFirstEmptyTableRow_(
-    sheet,
-    table
-  );
-
-  const rowValues = headers.map(
-    (header) => {
-
-      if (
-        Object.prototype.hasOwnProperty.call(
-          record,
-          header
-        )
-      ) {
-
-        return record[header];
-      }
-
-      return '';
+  function appendRecords_(sheetName, records) {
+    if (!Array.isArray(records) || records.length === 0) {
+      return [];
     }
-  );
-
-  sheet
-    .getRange(
-      targetRow,
-      1,
-      1,
-      headers.length
-    )
-    .setValues([rowValues]);
-
-  SpreadsheetApp.flush();
-
-  return targetRow;
-}
-
-
-
-
-
+    const sheet = getSheetOrThrow_(sheetName);
+    const lastColumn = sheet.getLastColumn();
+    if (lastColumn < 1) {
+      throw new Error(
+        `Cannot append to ${sheetName}: the sheet has no header columns.`
+      );
+    }
+    const headers = sheet
+      .getRange(1, 1, 1, lastColumn)
+      .getDisplayValues()[0];
+    const primaryHeader = headers[0];
+    records.forEach((record) => {
+      const primaryValue = Object.prototype.hasOwnProperty.call(
+        record,
+        primaryHeader
+      )
+        ? normalizeText_(record[primaryHeader])
+        : '';
+      if (!primaryValue) {
+        throw new Error(
+          `Cannot append to ${sheetName}: ${primaryHeader} is required.`
+        );
+      }
+    });
+    const table = getNativeTableForSheet_(sheet);
+    if (!table) {
+      throw new Error(
+        `No native Google Sheets Table was found on ${sheetName}.`
+      );
+    }
+    const targetRows = reserveEmptyTableRows_(sheet, table, records.length);
+    const rowValues = records.map((record) => {
+      return headers.map((header) => {
+        return Object.prototype.hasOwnProperty.call(record, header)
+          ? record[header]
+          : '';
+      });
+    });
+    let groupStart = 0;
+    while (groupStart < targetRows.length) {
+      let groupEnd = groupStart + 1;
+      while (
+        groupEnd < targetRows.length &&
+        targetRows[groupEnd] === targetRows[groupEnd - 1] + 1
+      ) {
+        groupEnd += 1;
+      }
+      sheet
+        .getRange(
+          targetRows[groupStart],
+          1,
+          groupEnd - groupStart,
+          headers.length
+        )
+        .setValues(rowValues.slice(groupStart, groupEnd));
+      groupStart = groupEnd;
+    }
+    SpreadsheetApp.flush();
+    invalidateRecordCache_(sheetName);
+    return targetRows;
+  }
+  function reserveEmptyTableRows_(sheet, table, count) {
+    const firstDataRow = table.range.startRowIndex + 2;
+    const lastTableRow = table.range.endRowIndex;
+    const availableRows = Math.max(0, lastTableRow - firstDataRow + 1);
+    const ids = availableRows
+      ? sheet.getRange(firstDataRow, 1, availableRows, 1).getDisplayValues()
+      : [];
+    const rows = [];
+    ids.forEach((row, offset) => {
+      if (rows.length < count && normalizeText_(row[0]) === '') {
+        rows.push(firstDataRow + offset);
+      }
+    });
+    if (rows.length < count) {
+      const expansionRows = Math.max(20, count - rows.length);
+      const expandedLastRow = lastTableRow + expansionRows;
+      ensureSheetRowCapacity_(sheet, expandedLastRow);
+      resizeNativeTable_(table, expandedLastRow);
+      for (let row = lastTableRow + 1; rows.length < count; row += 1) {
+        rows.push(row);
+      }
+    }
+    return rows;
+  }
 /**
  * Returns the native Google Sheets Table defined on a worksheet.
  *
@@ -645,6 +609,7 @@ function updateRecordRow_(
         .setValue(value);
     }
   );
+  invalidateRecordCache_(sheetName);
 }
 
 
@@ -736,6 +701,7 @@ function updateRecordRows_(sheetName, rowUpdates) {
 
     writeGroup();
   });
+  invalidateRecordCache_(sheetName);
 }
 
 /**
@@ -758,57 +724,37 @@ function updateRecordRows_(sheetName, rowUpdates) {
  * @param {number} digits
  * @return {string}
  */
-function generateId_(
-  counterName,
-  prefix,
-  digits
-) {
-
-  const lock =
-    LockService.getScriptLock();
-
-  lock.waitLock(30000);
-
-  try {
-
-    const properties =
-      PropertiesService.getScriptProperties();
-
-    const propertyKey =
-      `ID_COUNTER_${counterName}`;
-
-    const currentValue =
-      Number(
-        properties.getProperty(
-          propertyKey
-        ) || 0
-      );
-
-    const nextValue =
-      currentValue + 1;
-
-
-    properties.setProperty(
-      propertyKey,
-      String(nextValue)
-    );
-
-
-    return (
-      prefix +
-      String(nextValue).padStart(
-        digits,
-        '0'
-      )
-    );
-
-  } finally {
-
-    lock.releaseLock();
+  function generateId_(counterName, prefix, digits) {
+    return generateIds_(counterName, prefix, digits, 1)[0];
   }
-}
-
-
+  function generateIds_(counterName, prefix, digits, count) {
+    const idCount = integerOrThrow_(
+      count,
+      'ID count',
+      { allowZero: false }
+    );
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      const properties = PropertiesService.getScriptProperties();
+      const propertyKey = `ID_COUNTER_${counterName}`;
+      const currentValue = Number(
+        properties.getProperty(propertyKey) || 0
+      );
+      properties.setProperty(
+        propertyKey,
+        String(currentValue + idCount)
+      );
+      return Array.from(
+        { length: idCount },
+        (_, index) => {
+          return prefix + String(currentValue + index + 1).padStart(digits, '0');
+        }
+      );
+    } finally {
+      lock.releaseLock();
+    }
+  }
 /**
  * Normalizes general user-entered text.
  *
