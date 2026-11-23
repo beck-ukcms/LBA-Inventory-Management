@@ -299,7 +299,14 @@ function validateAnonymousPTStockAddition_(data) {
         `PT stock addition failed and was rolled back: ${error.message}`
       );
     }
-    refreshPTCatalogBalances_();
+    const ptDeltas = new Map();
+    ptDeltas.set(validated.gameId, {
+        unbundled: validated.quantity,
+        bundled: 0,
+        open: 0,
+        onHand: validated.quantity
+      });
+    applyPTCatalogBalanceDeltas_(ptDeltas);
     return dealIds;
   }
 /**
@@ -443,22 +450,24 @@ function createPaperCase_(data) {
         `Paper stock addition failed and was rolled back: ${error.message}`
       );
     }
-    refreshPaperCatalogBalances_();
+    const paperDeltas = new Map();
+    paperDeltas.set(
+        String(data.paperId),
+        cases * packsPerCase
+      );
+    applyPaperCatalogBalanceDeltas_(paperDeltas);
     return caseIds;
   }
-function createInventoryIssue_(data) {
-  const issueId = generateId_(
-    'ISSUE',
-    'ISS-',
-    7
-  );
-
-  appendRecord_('Inventory_Issues', {
-    Issue_ID: issueId,
-    Timestamp: now_(),
+function createInventoryIssues_(entries) {
+  if (!entries || !entries.length) return [];
+  const issueIds = generateIds_('ISSUE', 'ISS-', 7, entries.length);
+  const timestamp = now_();
+  appendRecords_('Inventory_Issues', entries.map((data, index) => ({
+    Issue_ID: issueIds[index],
+    Timestamp: timestamp,
     Inventory_Type: data.inventoryType,
     Issue_Type: data.issueType,
-    Product_ID: data.productId,
+    Product_ID: data.productId || '',
     Item_ID: data.itemId || '',
     Form_Number: data.formNumber || '',
     Serial_Number: data.serialNumber || '',
@@ -469,9 +478,11 @@ function createInventoryIssue_(data) {
     Status: 'Open',
     Reconciliation_ID: '',
     Notes: data.notes || ''
-  });
-
-  return issueId;
+  })));
+  return issueIds;
+}
+function createInventoryIssue_(data) {
+  return createInventoryIssues_([data])[0];
 }
 
 
@@ -735,6 +746,24 @@ function recordPTStatusChange_(deltasByGameId, gameId, oldStatus, newStatus) {
   }));
 }
 
+function applyPaperCatalogBalanceDeltas_(deltasByPaperId) {
+  if (!deltasByPaperId || !deltasByPaperId.size) return;
+  const updatedAt = now_();
+  const updates = getPaperCatalog_().filter((row) => {
+    return deltasByPaperId.has(String(row.Paper_ID));
+  }).map((row) => ({
+    rowNumber: row._rowNumber,
+    updates: {
+      Qty_On_Hand: Number(row.Qty_On_Hand || 0) +
+        Number(deltasByPaperId.get(String(row.Paper_ID)) || 0),
+      Balance_Updated_At: updatedAt
+    }
+  }));
+  if (updates.length !== deltasByPaperId.size) {
+    throw new Error('One or more Paper catalog records were not found for a balance update.');
+  }
+  updateRecordRows_('Paper_Catalog', updates);
+}
 function refreshPaperCatalogBalances_() {
   const totals = new Map();
   getPaperCases_().forEach((row) => {
@@ -754,20 +783,26 @@ function refreshPaperCatalogBalances_() {
 function applyPaperBalanceDeltas_(deltasByCaseId, refreshCatalog = true) {
   if (!deltasByCaseId || !deltasByCaseId.size) return;
   const updatedAt = now_();
+  const paperDeltas = new Map();
   const updates = getPaperCases_().filter((row) => {
     return deltasByCaseId.has(String(row.Paper_Case_ID));
-  }).map((row) => ({
-    rowNumber: row._rowNumber,
-    updates: {
-      Current_Packs: Number(row.Current_Packs || 0) + deltasByCaseId.get(String(row.Paper_Case_ID)),
-      Balance_Updated_At: updatedAt
-    }
-  }));
+  }).map((row) => {
+    const delta = Number(deltasByCaseId.get(String(row.Paper_Case_ID)) || 0);
+    const paperId = String(row.Paper_ID);
+    paperDeltas.set(paperId, (paperDeltas.get(paperId) || 0) + delta);
+    return {
+      rowNumber: row._rowNumber,
+      updates: {
+        Current_Packs: Number(row.Current_Packs || 0) + delta,
+        Balance_Updated_At: updatedAt
+      }
+    };
+  });
   if (updates.length !== deltasByCaseId.size) {
     throw new Error('One or more Paper cases were not found for a balance update.');
   }
   updateRecordRows_('Paper_Cases', updates);
-  if (refreshCatalog) refreshPaperCatalogBalances_();
+  if (refreshCatalog) applyPaperCatalogBalanceDeltas_(paperDeltas);
 }
 
 function initializeCurrentBalancesV115() {

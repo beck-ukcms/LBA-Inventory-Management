@@ -10,7 +10,7 @@
     <button
       class="btn secondary"
       type="button"
-      onclick="showScreen('home-screen')"
+      onclick="closePaperworkManagement()"
     >
       Main Menu
     </button>
@@ -154,18 +154,57 @@
   ];
 
 
-  async function openPaperworkManagement() {
-    showScreen('paperwork-management-screen');
-    clearStatus('paperwork-status');
-
-    try {
-      const data = await server('getPaperworkAppData');
-      renderPaperworkSessions(data.sessions);
-      renderPaperworkTrigger(data.trigger);
-    } catch (error) {
-      setStatus('paperwork-status', error.message, true);
+    function openPaperworkLogin() {
+      ADMIN_TOKEN = '';
+      $('paperwork-admin-code').value = '';
+      openModal('paperwork-login-modal');
+      setTimeout(() => $('paperwork-admin-code').focus(), 50);
     }
-  }
+    function cancelPaperworkLogin() {
+      closeModal('paperwork-login-modal');
+      showScreen('home-screen');
+    }
+    async function submitPaperworkLogin() {
+      try {
+        const result = await server(
+          'authenticateAdmin',
+          $('paperwork-admin-code').value
+        );
+        closeModal('paperwork-login-modal');
+        if (!result.ok) {
+          ADMIN_TOKEN = '';
+          showScreen('home-screen');
+          return;
+        }
+        ADMIN_TOKEN = result.token;
+        await openPaperworkManagement();
+      } catch (error) {
+        ADMIN_TOKEN = '';
+        closeModal('paperwork-login-modal');
+        showScreen('home-screen');
+      }
+    }
+    async function closePaperworkManagement() {
+      try {
+        await server('endAdminSession', ADMIN_TOKEN);
+      } catch (error) {
+        console.log('Paperwork logout cleanup failed:', error);
+      }
+      ADMIN_TOKEN = '';
+      showScreen('home-screen');
+    }
+    async function openPaperworkManagement() {
+      showScreen('paperwork-management-screen');
+      clearStatus('paperwork-status');
+      try {
+        const data = await server('getPaperworkAppData', ADMIN_TOKEN);
+        renderPaperworkSessions(data.sessions);
+        renderPaperworkTrigger(data.trigger);
+      } catch (error) {
+        ADMIN_TOKEN = '';
+        showScreen('home-screen');
+      }
+    }
 
 
   function renderPaperworkTrigger(trigger) {
@@ -243,7 +282,7 @@
 
     setStatus(
       'paperwork-status',
-      'Processing past paperwork and creating one session...'
+      'Creating one session paperwork set...'
     );
 
     try {
@@ -266,7 +305,7 @@
 
   async function installPaperworkTriggerFromScreen() {
     try {
-      const trigger = await server('installDailyPaperworkTrigger');
+      const trigger = await server('installDailyPaperworkTrigger', ADMIN_TOKEN);
       renderPaperworkTrigger(trigger);
       setStatus('paperwork-status', 'Daily trigger installed.');
     } catch (error) {
@@ -277,7 +316,7 @@
 
   async function removePaperworkTriggerFromScreen() {
     try {
-      const trigger = await server('removeDailyPaperworkTrigger');
+      const trigger = await server('removeDailyPaperworkTrigger', ADMIN_TOKEN);
       renderPaperworkTrigger(trigger);
       setStatus('paperwork-status', 'Daily trigger removed.');
     } catch (error) {
@@ -316,7 +355,7 @@
     );
 
     try {
-      const data = await server('archiveSelectedPaperwork', items);
+      const data = await server('archiveSelectedPaperwork', ADMIN_TOKEN, items);
       renderPaperworkSessions(data.sessions);
 
       const lines = data.results.map((result) => {

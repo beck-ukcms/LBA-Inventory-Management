@@ -30,7 +30,7 @@
       </div>
      </button>
      <? } else if (link.id === 'paperwork') { ?>
-     <button class="tile" type="button" onclick="openPaperworkManagement()">
+     <button class="tile" type="button" onclick="openPaperworkLogin()">
       <img alt="" src="<?= link.icon ?>"/>
       <div class="tile-copy">
        <h2>
@@ -89,6 +89,19 @@
    <?!= include_('AppPaperReconciliation'); ?>
    <?!= include_('AppOrdering'); ?>
   </main>
+
+  <div class="modal" id="paperwork-login-modal">
+   <div class="modal-card">
+    <button class="close" type="button" onclick="cancelPaperworkLogin()">×</button>
+    <h2>Paperwork Management</h2>
+    <label for="paperwork-admin-code">Administrative code</label>
+    <input autocomplete="one-time-code" id="paperwork-admin-code" inputmode="numeric" type="password"/>
+    <div class="actions" style="margin-top:16px">
+     <button class="btn" type="button" onclick="submitPaperworkLogin()">Continue</button>
+     <button class="btn secondary" type="button" onclick="cancelPaperworkLogin()">Cancel</button>
+    </div>
+   </div>
+  </div>
   <div class="modal" id="admin-login-modal">
    <div class="modal-card">
     <button class="close" type="button" onclick="closeModal('admin-login-modal')">
@@ -117,6 +130,7 @@
    function openAdminLogin(){clearStatus('login-status');$('admin-code').value='';openModal('admin-login-modal');setTimeout(()=>$('admin-code').focus(),50)}
 async function submitAdminLogin(){clearStatus('login-status');try{const r=await server('authenticateAdmin',$('admin-code').value);if(!r.ok){setStatus('login-status',r.message,true);return}ADMIN_TOKEN=r.token;closeModal('admin-login-modal');showScreen('admin-screen')}catch(e){setStatus('login-status',e.message,true)}}
 $('admin-code').addEventListener('keydown',e=>{if(e.key==='Enter')submitAdminLogin()});
+  $('paperwork-admin-code').addEventListener('keydown',e=>{if(e.key==='Enter')submitPaperworkLogin()});
   </script>
  </body>
 </html>

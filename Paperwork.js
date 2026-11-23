@@ -35,9 +35,9 @@ const PAPERWORK_REQUIRED_SESSION_HEADERS = [
 ];
 
 
-function getPaperworkAppData() {
+function getPaperworkAppData(token) {
+  requireAdmin_(token);
   validatePaperworkConfiguration_();
-
   return {
     sessions: scanWeeklyPaperworkFolders_(),
     trigger: getDailyPaperworkTriggerStatus_()
@@ -83,10 +83,10 @@ function scanWeeklyPaperworkFolders_() {
 }
 
 
-function installDailyPaperworkTrigger() {
+function installDailyPaperworkTrigger(token) {
+  requireAdmin_(token);
   validatePaperworkConfiguration_();
   removeDailyPaperworkTriggers_();
-
   ScriptApp
     .newTrigger('dailyPaperworkMaintenance')
     .timeBased()
@@ -94,12 +94,12 @@ function installDailyPaperworkTrigger() {
     .everyDays(1)
     .inTimezone(PAPERWORK_CONFIG.triggerTimeZone)
     .create();
-
   return getDailyPaperworkTriggerStatus_();
 }
 
 
-function removeDailyPaperworkTrigger() {
+function removeDailyPaperworkTrigger(token) {
+  requireAdmin_(token);
   removeDailyPaperworkTriggers_();
   return getDailyPaperworkTriggerStatus_();
 }
@@ -184,24 +184,19 @@ function dailyPaperworkMaintenance() {
 }
 
 
-function createManualSingleDatePaperwork(dateString, label) {
+function createManualSingleDatePaperwork(token, dateString, label) {
+  requireAdmin_(token);
   validatePaperworkConfiguration_();
   validatePaperworkLabel_(label);
-
   const date = parsePaperworkIsoDate_(dateString);
-
   if (!date) {
     throw new Error('Please select a valid session date.');
   }
-
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
-
   try {
-    const archiveResults = archivePastSessionPaperwork_(date);
     const registry = getPaperworkSessionsRegistry_();
     const matches = findPaperworkSessionRecords_(registry, date, label);
-
     if (matches.length > 1) {
       throw new Error(
         'Multiple Sessions rows already exist for ' +
@@ -209,19 +204,11 @@ function createManualSingleDatePaperwork(dateString, label) {
         ' and ' + label + '.'
       );
     }
-
     if (matches.length === 0) {
       appendPaperworkSessionRow_(registry, date, label);
     }
-
-    const creationResult = createOnePaperworkSet_(
-      date,
-      label,
-      registry
-    );
-
+    const creationResult = createOnePaperworkSet_(date, label, registry);
     return {
-      archiveResults: archiveResults,
       creationResult: creationResult,
       sessions: scanWeeklyPaperworkFolders_()
     };
@@ -764,7 +751,8 @@ function archiveOneSession_(date, label, sessionId) {
 }
 
 
-function archiveSelectedPaperwork(items) {
+function archiveSelectedPaperwork(token, items) {
+  requireAdmin_(token);
   validatePaperworkConfiguration_();
 
   if (!Array.isArray(items) || items.length === 0) {
@@ -1395,61 +1383,137 @@ function processSessionPaper_(spreadsheet, context, sourceFile) {
 }
 
 function processSessionPT_(spreadsheet, context, sourceFile) {
-  let transactions = 0;
-  let issues = 0;
-
+  const observations = [];
   COMPLETED_PT_RANGES.forEach((definition) => {
     const sheet = spreadsheet.getSheetByName(definition.sheetName);
-
     if (!sheet) {
       throw new Error(`Required worksheet ${definition.sheetName} is missing.`);
     }
-
-    const rows = definition.rows || createIntegerRange_(
-      definition.firstRow,
-      definition.lastRow
-    );
-
+    const rows = definition.rows || createIntegerRange_(definition.firstRow, definition.lastRow);
+    const firstRow = Math.min(...rows);
+    const lastRow = Math.max(...rows);
+    const values = sheet.getRange(firstRow, 4, lastRow - firstRow + 1, 2).getDisplayValues();
     rows.forEach((rowNumber) => {
-      const serialNumber = normalizeText_(sheet.getRange(rowNumber, 4).getDisplayValue());
-      const formNumber = normalizeFormNumber_(sheet.getRange(rowNumber, 5).getDisplayValue());
-
-      if (!serialNumber || !formNumber || /^#N\/A$/i.test(serialNumber)) {
-        return;
-      }
-
-      const result = processCompletedPTDeal_(
-        formNumber,
-        serialNumber,
-        context,
-        definition.sheetName,
-        rowNumber,
-        sourceFile
-      );
-
-      transactions += result.transaction ? 1 : 0;
-      issues += result.issue ? 1 : 0;
+      const row = values[rowNumber - firstRow];
+      const serialNumber = normalizeText_(row[0]);
+      const formNumber = normalizeFormNumber_(row[1]);
+      if (!serialNumber || !formNumber || /^#N\/A$/i.test(serialNumber)) return;
+      observations.push({
+        kind: 'completed',
+        formNumber: formNumber,
+        serialNumber: serialNumber,
+        location: `${definition.sheetName} row ${rowNumber}`
+      });
     });
   });
-
   const main = spreadsheet.getSheetByName('WS-06 PTs (Main)');
-
+  if (!main) throw new Error('Required worksheet WS-06 PTs (Main) is missing.');
+  const firstCarryoverRow = Math.min(...CARRYOVER_START_ROWS);
+  const lastCarryoverRow = Math.max(...CARRYOVER_START_ROWS) + 5;
+  const values = main.getRange(firstCarryoverRow, 4, lastCarryoverRow - firstCarryoverRow + 1, 3).getValues();
   CARRYOVER_START_ROWS.forEach((startRow) => {
-    const result = processCarryoverPTDeal_(
-      main,
-      startRow,
-      context,
-      sourceFile
-    );
-
-    transactions += result.transaction ? 1 : 0;
-    issues += result.issue ? 1 : 0;
+    const start = values[startRow - firstCarryoverRow];
+    const sales = values[startRow + 5 - firstCarryoverRow];
+    const serialNumber = normalizeText_(start[0]);
+    const formNumber = normalizeFormNumber_(start[1]);
+    if (!serialNumber || !formNumber) return;
+    observations.push({
+      kind: 'carryover',
+      formNumber: formNumber,
+      serialNumber: serialNumber,
+      ticketCount: Number(start[2] || 0),
+      totalSales: Number(sales[2] || 0),
+      location: `Carry-over block row ${startRow}`
+    });
   });
-
-  return {
-    transactions: transactions,
-    issues: issues
-  };
+  const dealsByKey = new Map();
+  getPTDeals_().forEach((deal) => {
+    const serial = normalizeText_(deal.Serial_Number);
+    if (serial) dealsByKey.set(`${normalizeFormNumber_(deal.Form_Number)}::${serial}`, deal);
+  });
+  const plannedStatuses = new Map();
+  const dealUpdates = [];
+  const transactions = [];
+  const issues = [];
+  const balanceDeltas = new Map();
+  observations.forEach((observation) => {
+    const deal = dealsByKey.get(`${observation.formNumber}::${observation.serialNumber}`);
+    if (!deal) {
+      issues.push({
+        inventoryType: 'PT', issueType: 'Unknown Deal', productId: '', itemId: '',
+        formNumber: observation.formNumber, serialNumber: observation.serialNumber,
+        sessionId: context.sessionId, expectedQuantity: 0, reportedQuantity: 1,
+        discrepancyAmount: 1,
+        notes: `${observation.location}; source file ${sourceFile.getId()}.`
+      });
+      return;
+    }
+    const dealId = String(deal.PT_Deal_ID);
+    const priorStatus = plannedStatuses.get(dealId) || String(deal.Deal_Status);
+    let targetStatus;
+    let transactionType;
+    let quantityChange;
+    let notes;
+    if (observation.kind === 'completed') {
+      if (priorStatus === 'Sold') {
+        issues.push({inventoryType:'PT', issueType:'Duplicate Sale', productId:deal.PT_Game_ID,
+          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
+          notes:observation.location + '.'});
+        return;
+      }
+      if (!['Bundled', 'Open'].includes(priorStatus)) {
+        issues.push({inventoryType:'PT', issueType:'Unavailable Deal', productId:deal.PT_Game_ID,
+          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
+          notes:`Deal status was ${priorStatus}; ${observation.location}.`});
+        return;
+      }
+      targetStatus = 'Sold';
+      transactionType = 'Sold';
+      quantityChange = priorStatus === 'Open' ? 0 : -1;
+      notes = `${observation.location}; source file ${sourceFile.getId()}.`;
+    } else {
+      if (observation.totalSales > observation.ticketCount) {
+        issues.push({inventoryType:'PT', issueType:'Unexpected Deal', productId:deal.PT_Game_ID,
+          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
+          notes:`Carry-over sales ${observation.totalSales} exceed ticket count ${observation.ticketCount}.`});
+        return;
+      }
+      targetStatus = observation.totalSales === observation.ticketCount ? 'Sold' : 'Open';
+      if (priorStatus === targetStatus) return;
+      if (!['Bundled', 'Open'].includes(priorStatus)) {
+        issues.push({inventoryType:'PT', issueType:'Unavailable Deal', productId:deal.PT_Game_ID,
+          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
+          notes:`Carry-over deal status was ${priorStatus}.`});
+        return;
+      }
+      transactionType = targetStatus === 'Open' ? 'Opened' : 'Sold';
+      quantityChange = priorStatus === 'Bundled' && targetStatus === 'Open' ? -1 : 0;
+      notes = `${observation.location}; ${observation.totalSales}/${observation.ticketCount} sold; source file ${sourceFile.getId()}.`;
+    }
+    const updates = {Deal_Status: targetStatus};
+    if (targetStatus === 'Sold') {
+      updates.Expended_Date = context.date;
+      updates.Expended_Session_ID = context.sessionId;
+    }
+    dealUpdates.push({rowNumber: deal._rowNumber, updates: updates});
+    recordPTStatusChange_(balanceDeltas, deal.PT_Game_ID, priorStatus, targetStatus);
+    plannedStatuses.set(dealId, targetStatus);
+    transactions.push({
+      effectiveDate: context.date, inventoryType: 'PT', productId: deal.PT_Game_ID,
+      itemId: dealId, formNumber: observation.formNumber, serialNumber: observation.serialNumber,
+      transactionType: transactionType, quantityChange: quantityChange, unit: 'Deal',
+      sessionId: context.sessionId, source: SESSION_PROCESSING_SOURCE, notes: notes
+    });
+  });
+  updateRecordRows_('PT_Deals', dealUpdates);
+  applyPTCatalogBalanceDeltas_(balanceDeltas);
+  postInventoryTransactions_(transactions);
+  createInventoryIssues_(issues);
+  return {transactions: transactions.length, issues: issues.length};
 }
 
 
@@ -1536,16 +1600,16 @@ function processCompletedPTDeal_(
 }
 
 
-function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
-  const serialNumber = normalizeText_(sheet.getRange(startRow, 4).getDisplayValue());
-  const formNumber = normalizeFormNumber_(sheet.getRange(startRow, 5).getDisplayValue());
-  const ticketCount = Number(sheet.getRange(startRow, 6).getValue() || 0);
+function processCarryoverPTDealValues_(values, startRow, context, sourceFile) {
+  const serialNumber = normalizeText_(values.serialNumber);
+  const formNumber = normalizeFormNumber_(values.formNumber);
+  const ticketCount = Number(values.ticketCount || 0);
 
   if (!serialNumber || !formNumber) {
     return { transaction: false, issue: false };
   }
 
-  const totalSales = Number(sheet.getRange(startRow + 5, 6).getValue() || 0);
+  const totalSales = Number(values.totalSales || 0);
   const deal = findPTDeal_(formNumber, serialNumber);
 
   if (!deal) {
@@ -1635,6 +1699,21 @@ function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
 
   return { transaction: true, issue: false };
 }
+function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
+  const values = sheet.getRange(startRow, 4, 6, 3).getValues();
+  return processCarryoverPTDealValues_(
+    {
+      serialNumber: values[0][0],
+      formNumber: values[0][1],
+      ticketCount: values[0][2],
+      totalSales: values[5][2]
+    },
+    startRow,
+    context,
+    sourceFile
+  );
+}
+
 
 
 function createPTPaperworkIssue_(

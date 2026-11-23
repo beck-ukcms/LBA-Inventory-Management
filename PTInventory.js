@@ -7,17 +7,17 @@
 
 
 function getPTBundlingGames() {
+  const gamesById = new Map(
+    getPTCatalog_().map((game) => [String(game.PT_Game_ID), game])
+  );
   return buildPTFormOptions_().map((option) => {
-    const game = getPTCatalog_().find((catalogRow) => {
-      return String(catalogRow.PT_Game_ID) === String(option.gameId);
-    });
-
+    const game = gamesById.get(String(option.gameId));
     return {
       gameId: option.gameId,
       formNumber: option.formNumber,
       name: option.gameName,
-      cards: String(game.Cards_Per_Deal || ''),
-      payout: String(game.Payout_Per_Deal || '')
+      cards: String((game || {}).Cards_Per_Deal || ''),
+      payout: String((game || {}).Payout_Per_Deal || '')
     };
   });
 }

@@ -420,15 +420,9 @@ function updateRecordRows_(sheetName, rowUpdates) {
       })
     : [];
   if (!updatesToApply.length) return;
-
   const sheet = getSheetOrThrow_(sheetName);
   const headerMap = getHeaderMap_(sheet);
   const rowsByNumber = new Map();
-  let minRow = Infinity;
-  let maxRow = 0;
-  let minColumn = Infinity;
-  let maxColumn = 0;
-
   updatesToApply.forEach((item) => {
     const rowNumber = Number(item.rowNumber);
     const merged = rowsByNumber.get(rowNumber) || {};
@@ -437,27 +431,44 @@ function updateRecordRows_(sheetName, rowUpdates) {
         throw new Error(`Unknown ${sheetName} column: ${header}`);
       }
       merged[header] = value;
-      const column = headerMap[header] + 1;
-      minColumn = Math.min(minColumn, column);
-      maxColumn = Math.max(maxColumn, column);
     });
     rowsByNumber.set(rowNumber, merged);
-    minRow = Math.min(minRow, rowNumber);
-    maxRow = Math.max(maxRow, rowNumber);
   });
-
-  const rowCount = maxRow - minRow + 1;
-  const columnCount = maxColumn - minColumn + 1;
-  const range = sheet.getRange(minRow, minColumn, rowCount, columnCount);
-  const values = range.getValues();
-
-  rowsByNumber.forEach((updates, rowNumber) => {
-    Object.entries(updates).forEach(([header, value]) => {
-      values[rowNumber - minRow][headerMap[header] + 1 - minColumn] = value;
+  const sortedRows = [...rowsByNumber.keys()].sort((a, b) => a - b);
+  const groups = [];
+  sortedRows.forEach((rowNumber) => {
+    const current = groups[groups.length - 1];
+    if (!current || rowNumber !== current[current.length - 1] + 1) {
+      groups.push([rowNumber]);
+    } else {
+      current.push(rowNumber);
+    }
+  });
+  groups.forEach((rows) => {
+    let minColumn = Infinity;
+    let maxColumn = 0;
+    rows.forEach((rowNumber) => {
+      Object.keys(rowsByNumber.get(rowNumber)).forEach((header) => {
+        const column = headerMap[header] + 1;
+        minColumn = Math.min(minColumn, column);
+        maxColumn = Math.max(maxColumn, column);
+      });
     });
+    const firstRow = rows[0];
+    const range = sheet.getRange(
+      firstRow,
+      minColumn,
+      rows.length,
+      maxColumn - minColumn + 1
+    );
+    const values = range.getValues();
+    rows.forEach((rowNumber) => {
+      Object.entries(rowsByNumber.get(rowNumber)).forEach(([header, value]) => {
+        values[rowNumber - firstRow][headerMap[header] + 1 - minColumn] = value;
+      });
+    });
+    range.setValues(values);
   });
-
-  range.setValues(values);
   invalidateRecordCache_(sheetName);
 }
 
