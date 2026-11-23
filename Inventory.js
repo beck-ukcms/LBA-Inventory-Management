@@ -702,7 +702,17 @@ function recordPTStatusChange_(deltasByGameId, gameId, oldStatus, newStatus) {
   deltasByGameId.set(key, delta);
 }
 
-function refreshPTCatalogBalances_() {
+  function applySinglePTStatusChange_(gameId, oldStatus, newStatus) {
+    const deltasByGameId = new Map();
+    recordPTStatusChange_(
+      deltasByGameId,
+      gameId,
+      String(oldStatus || ''),
+      String(newStatus || '')
+    );
+    applyPTCatalogBalanceDeltas_(deltasByGameId);
+  }
+  function refreshPTCatalogBalances_() {
   const counts = new Map();
   getPTDeals_().forEach((deal) => {
     const id = String(deal.PT_Game_ID);

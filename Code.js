@@ -352,20 +352,26 @@ function resizeNativeTable_(
   updatedTable.range.endRowIndex =
     newEndRowIndex;
 
-  Sheets.Spreadsheets.batchUpdate(
-    {
-      requests: [
-        {
-          updateTable: {
-            table: updatedTable,
-            fields: 'range'
+    Sheets.Spreadsheets.batchUpdate(
+      {
+        requests: [
+          {
+            updateTable: {
+              table: updatedTable,
+              fields: 'range'
+            }
           }
-        }
-      ]
-    },
-    spreadsheet.getId()
-  );
-}
+        ]
+      },
+      spreadsheet.getId()
+    );
+    if (EXECUTION_NATIVE_TABLE_CACHE_) {
+      EXECUTION_NATIVE_TABLE_CACHE_.set(
+        String(updatedTable.range.sheetId),
+        JSON.parse(JSON.stringify(updatedTable))
+      );
+    }
+  }
 
 
 /**

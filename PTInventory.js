@@ -108,10 +108,14 @@ function bundleExistingIdentifiedPTDeal_(context) {
         deal.Notes,
         'Bundled through integrated PT Processing.'
       )
-    });
-
-    const bundledTransactionId = postPTBundledTransaction_(
-      deal.PT_Deal_ID,
+      });
+      applySinglePTStatusChange_(
+        deal.PT_Game_ID,
+        status,
+        'Bundled'
+      );
+      const bundledTransactionId = postPTBundledTransaction_(
+        deal.PT_Deal_ID,
       context.game.PT_Game_ID,
       context.formNumber,
       context.serialNumber,
@@ -136,8 +140,17 @@ function bundleExistingIdentifiedPTDeal_(context) {
         deal.Notes,
         'Missing deal recovered and bundled through integrated PT Processing.'
       )
-    });
-
+      });
+      applySinglePTStatusChange_(
+        deal.PT_Game_ID,
+        status,
+        'Bundled'
+      );
+    applySinglePTStatusChange_(
+      context.game.PT_Game_ID,
+      '',
+      'Bundled'
+    );
     const adjustmentTransactionId = postInventoryTransaction_({
       effectiveDate: now_(),
       inventoryType: 'PT',
@@ -201,10 +214,14 @@ function bundleNewlyIdentifiedPTDeal_(context) {
         anonymousDeal.Notes,
         'Serial assigned and deal bundled through integrated PT Processing.'
       )
-    });
-
-    const bundledTransactionId = postPTBundledTransaction_(
-      anonymousDeal.PT_Deal_ID,
+      });
+      applySinglePTStatusChange_(
+        anonymousDeal.PT_Game_ID,
+        'Unbundled',
+        'Bundled'
+      );
+      const bundledTransactionId = postPTBundledTransaction_(
+        anonymousDeal.PT_Deal_ID,
       context.game.PT_Game_ID,
       context.formNumber,
       context.serialNumber,
@@ -322,10 +339,7 @@ function resolveOpenPTIssuesForDeal_(deal, resolutionNote) {
       );
     })
     .forEach((issue) => {
-      updateRecordRow_('Inventory_Issues', issue._rowNumber, {
-        Status: 'Resolved',
-        Notes: appendInventoryNote_(issue.Notes, resolutionNote)
-      });
+        resolveInventoryIssueRecord_(issue, resolutionNote);
 
       resolvedIssueIds.push(String(issue.Issue_ID));
     });
@@ -616,9 +630,14 @@ function reconcileExistingPTDeal_(context) {
     reconciliationNote
   );
 
-  const reconciliation = createReconciliationRecord_({
-    inventoryType: 'PT',
-    productId: context.gameId,
+    applySinglePTStatusChange_(
+      context.gameId,
+      '',
+      observedStatus
+    );
+    const reconciliation = createReconciliationRecord_({
+      inventoryType: 'PT',
+      productId: context.gameId,
     itemId: dealId,
     formNumber: context.formNumber,
     serialNumber: observedSerial,
@@ -667,9 +686,15 @@ function reconcileExistingPTDeal_(context) {
     rowUpdates
   );
 
-  let transactionId = '';
-
-  if (reconciliation.correction !== 0) {
+    if (statusChanged) {
+      applySinglePTStatusChange_(
+        existingDeal.PT_Game_ID,
+        recordedStatus,
+        observedStatus
+      );
+    }
+    let transactionId = '';
+    if (reconciliation.correction !== 0) {
     transactionId = postInventoryTransaction_({
       effectiveDate: context.effectiveDate,
       inventoryType: 'PT',

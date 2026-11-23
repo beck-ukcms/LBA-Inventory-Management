@@ -1,5 +1,5 @@
 ================================================================
-GIT COMMIT: b0913737721e5439c826728c2d919527df1e112b
+GIT COMMIT: 6f40effcafe02e65f2587574cb0a5bf9b746766e
 ================================================================
 
 ================================================================
@@ -148,20 +148,64 @@ FILE: AppCatalogMaintenance.html
 ================================================================
 
 <section id="catalog-maintenance-screen" class="screen">
- <div class="section-title"><div><h2>Catalog Maintenance</h2><p class="muted">Edit active and inactive PT and Paper products.</p></div><button class="btn secondary" onclick="showScreen('admin-screen')">Back</button></div>
- <div class="panel"><div class="actions"><button id="cat-pt-tab" class="btn" onclick="showCatalogType('pt')">Pulltabs</button><button id="cat-paper-tab" class="btn secondary" onclick="showCatalogType('paper')">Paper</button></div><div id="catalog-status" class="status"></div></div>
- <div id="cat-pt-panel" class="panel"><label>Game / Form</label><input id="cat-pt-search" list="cat-pt-list" autocomplete="off" onchange="loadCatalogPT()"><datalist id="cat-pt-list"></datalist><div id="cat-pt-fields" class="form-grid"></div><button class="btn" onclick="saveCatalogPT()">Save PT Game</button></div>
- <div id="cat-paper-panel" class="panel hidden"><label>Paper Type</label><input id="cat-paper-search" list="cat-paper-list" autocomplete="off" onchange="loadCatalogPaper()"><datalist id="cat-paper-list"></datalist><div id="cat-paper-fields" class="form-grid"></div><button class="btn" onclick="saveCatalogPaper()">Save Paper Type</button></div>
+ <div class="section-title"><div><h2>Catalog Maintenance</h2><p class="muted">Edit active and inactive PT and Paper products.</p></div><button class="btn secondary" type="button" onclick="showScreen('admin-screen')">Back</button></div>
+ <div class="panel"><div class="actions"><button id="cat-pt-tab" class="btn" type="button" onclick="showCatalogType('pt')">Pulltabs</button><button id="cat-paper-tab" class="btn secondary" type="button" onclick="showCatalogType('paper')">Paper</button></div><div id="catalog-status" class="status"></div></div>
+ <div id="cat-pt-panel" class="panel"><label>Game / Form</label><input id="cat-pt-search" list="cat-pt-list" autocomplete="off" onchange="loadCatalogPT()"><datalist id="cat-pt-list"></datalist><div id="cat-pt-fields" class="form-grid"></div><button id="save-catalog-pt" class="btn" type="button" onclick="saveCatalogPT()">Save PT Game</button></div>
+ <div id="cat-paper-panel" class="panel hidden"><label>Paper Type</label><input id="cat-paper-search" list="cat-paper-list" autocomplete="off" onchange="loadCatalogPaper()"><datalist id="cat-paper-list"></datalist><div id="cat-paper-fields" class="form-grid"></div><button id="save-catalog-paper" class="btn" type="button" onclick="saveCatalogPaper()">Save Paper Type</button></div>
 </section>
 <script>
-let CATALOG_DATA={pt:[],paper:[],gameTypes:[]},CAT_PT=null,CAT_PAPER=null;
-async function openCatalogMaintenance(){showScreen('catalog-maintenance-screen');CATALOG_DATA=await server('getCatalogMaintenanceData',ADMIN_TOKEN);$('cat-pt-list').innerHTML=CATALOG_DATA.pt.map(x=>`<option value="${escapeHtml(x.label)}"></option>`).join('');$('cat-paper-list').innerHTML=CATALOG_DATA.paper.map(x=>`<option value="${escapeHtml(x.label)}"></option>`).join('');showCatalogType('pt')}
-function showCatalogType(t){$('cat-pt-panel').classList.toggle('hidden',t!=='pt');$('cat-paper-panel').classList.toggle('hidden',t!=='paper');$('cat-pt-tab').className=t==='pt'?'btn':'btn secondary';$('cat-paper-tab').className=t==='paper'?'btn':'btn secondary'}
-function field(id,label,value,type='text'){return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" value="${escapeHtml(value)}"></div>`}
-function loadCatalogPT(){CAT_PT=CATALOG_DATA.pt.find(x=>x.label===$('cat-pt-search').value)||null;if(!CAT_PT)return;$('cat-pt-fields').innerHTML=field('cpt-name','Game Name',CAT_PT.gameName)+field('cpt-type','Game Type',CAT_PT.gameType)+field('cpt-form','Primary Form',CAT_PT.primaryFormNumber)+field('cpt-alt','Alternate Forms',CAT_PT.alternateFormNumbers)+field('cpt-order','Display Order',CAT_PT.displayOrder,'number')+field('cpt-cards','Cards per Deal',CAT_PT.cardsPerDeal,'number')+field('cpt-case','Deals per Case',CAT_PT.dealsPerCase,'number')+field('cpt-price','Price per Card',CAT_PT.pricePerCard,'number')+field('cpt-payout','Payout per Deal',CAT_PT.payoutPerDeal,'number')+field('cpt-cost','Manufacturer Cost per Deal',CAT_PT.manufacturerCostPerDeal,'number')+field('cpt-target','Target On Hand',CAT_PT.targetOnHand,'number')+field('cpt-bundled','Target Bundled',CAT_PT.targetBundled,'number')+field('cpt-notes','Notes',CAT_PT.notes)+`<div><label><input id="cpt-active" type="checkbox" ${CAT_PT.active?'checked':''}> Active</label></div>`}
-async function saveCatalogPT(){if(!CAT_PT)return;const v=id=>$(id).value;await server('updatePTGame',ADMIN_TOKEN,{gameId:CAT_PT.gameId,gameName:v('cpt-name'),gameType:v('cpt-type'),primaryFormNumber:v('cpt-form'),alternateFormNumbers:v('cpt-alt'),displayOrder:v('cpt-order'),cardsPerDeal:v('cpt-cards'),dealsPerCase:v('cpt-case'),pricePerCard:v('cpt-price'),payoutPerDeal:v('cpt-payout'),manufacturerCostPerDeal:v('cpt-cost'),targetOnHand:v('cpt-target'),targetBundled:v('cpt-bundled'),notes:v('cpt-notes'),active:$('cpt-active').checked});setStatus('catalog-status','PT game saved.')}
-function loadCatalogPaper(){CAT_PAPER=CATALOG_DATA.paper.find(x=>x.label===$('cat-paper-search').value)||null;if(!CAT_PAPER)return;$('cat-paper-fields').innerHTML=field('cp-short','Short Name',CAT_PAPER.shortName)+field('cp-desc','Description',CAT_PAPER.description)+field('cp-order','Display Order',CAT_PAPER.displayOrder,'number')+field('cp-packbox','Packs per Box',CAT_PAPER.packsPerBox,'number')+field('cp-boxcase','Boxes per Case',CAT_PAPER.boxesPerCase,'number')+field('cp-cost','Manufacturer Cost per Case',CAT_PAPER.manufacturerCostPerCase,'number')+field('cp-price','Sales Price per Pack',CAT_PAPER.salesPricePerPack,'number')+field('cp-target','Target On Hand',CAT_PAPER.targetOnHand,'number')+field('cp-notes','Notes',CAT_PAPER.notes)+`<div><label><input id="cp-active" type="checkbox" ${CAT_PAPER.active?'checked':''}> Active</label></div>`}
-async function saveCatalogPaper(){if(!CAT_PAPER)return;const v=id=>$(id).value;await server('updatePaperType',ADMIN_TOKEN,{paperId:CAT_PAPER.paperId,shortName:v('cp-short'),description:v('cp-desc'),displayOrder:v('cp-order'),packsPerBox:v('cp-packbox'),boxesPerCase:v('cp-boxcase'),manufacturerCostPerCase:v('cp-cost'),salesPricePerPack:v('cp-price'),targetOnHand:v('cp-target'),notes:v('cp-notes'),active:$('cp-active').checked});setStatus('catalog-status','Paper type saved.')}
+  let CATALOG_DATA = {pt: [], paper: [], gameTypes: []};
+  let CAT_PT = null;
+  let CAT_PAPER = null;
+  async function refreshCatalogMaintenanceData() {
+    CATALOG_DATA = await server('getCatalogMaintenanceData', ADMIN_TOKEN);
+    $('cat-pt-list').innerHTML = CATALOG_DATA.pt.map((x) => `<option value="${escapeHtml(x.label)}"></option>`).join('');
+    $('cat-paper-list').innerHTML = CATALOG_DATA.paper.map((x) => `<option value="${escapeHtml(x.label)}"></option>`).join('');
+  }
+  async function openCatalogMaintenance() {
+    showScreen('catalog-maintenance-screen');
+    clearStatus('catalog-status');
+    try { await refreshCatalogMaintenanceData(); showCatalogType('pt'); }
+    catch (error) { setStatus('catalog-status', error.message, true); }
+  }
+  function showCatalogType(type) {
+    $('cat-pt-panel').classList.toggle('hidden', type !== 'pt');
+    $('cat-paper-panel').classList.toggle('hidden', type !== 'paper');
+    $('cat-pt-tab').className = type === 'pt' ? 'btn' : 'btn secondary';
+    $('cat-paper-tab').className = type === 'paper' ? 'btn' : 'btn secondary';
+  }
+  function field(id, label, value, type = 'text') { return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" value="${escapeHtml(value)}"></div>`; }
+  function selectField(id, label, value, values) { return `<div><label for="${id}">${label}</label><select id="${id}">${values.map((x) => `<option value="${escapeHtml(x)}"${x === value ? ' selected' : ''}>${escapeHtml(x)}</option>`).join('')}</select></div>`; }
+  function loadCatalogPT() {
+    CAT_PT = CATALOG_DATA.pt.find((x) => x.label === $('cat-pt-search').value) || null;
+    if (!CAT_PT) return;
+    $('cat-pt-fields').innerHTML = field('cpt-name','Game Name',CAT_PT.gameName) + selectField('cpt-type','Game Type',CAT_PT.gameType,CATALOG_DATA.gameTypes) + field('cpt-form','Primary Form',CAT_PT.primaryFormNumber) + field('cpt-alt','Alternate Forms',CAT_PT.alternateFormNumbers) + field('cpt-order','Display Order',CAT_PT.displayOrder,'number') + field('cpt-cards','Cards per Deal',CAT_PT.cardsPerDeal,'number') + field('cpt-case','Deals per Case',CAT_PT.dealsPerCase,'number') + field('cpt-price','Price per Card',CAT_PT.pricePerCard,'number') + field('cpt-payout','Payout per Deal',CAT_PT.payoutPerDeal,'number') + field('cpt-cost','Manufacturer Cost per Deal',CAT_PT.manufacturerCostPerDeal,'number') + field('cpt-target','Target On Hand',CAT_PT.targetOnHand,'number') + field('cpt-bundled','Target Bundled',CAT_PT.targetBundled,'number') + field('cpt-notes','Notes',CAT_PT.notes) + `<div><label><input id="cpt-active" type="checkbox" ${CAT_PT.active ? 'checked' : ''}> Active</label></div>`;
+  }
+  async function saveCatalogPT() {
+    if (!CAT_PT) return;
+    await withBusyButton('save-catalog-pt', async () => {
+      const value = (id) => $(id).value;
+      try {
+        const updated = await server('updatePTGame', ADMIN_TOKEN, {gameId:CAT_PT.gameId,gameName:value('cpt-name'),gameType:value('cpt-type'),primaryFormNumber:value('cpt-form'),alternateFormNumbers:value('cpt-alt'),displayOrder:value('cpt-order'),cardsPerDeal:value('cpt-cards'),dealsPerCase:value('cpt-case'),pricePerCard:value('cpt-price'),payoutPerDeal:value('cpt-payout'),manufacturerCostPerDeal:value('cpt-cost'),targetOnHand:value('cpt-target'),targetBundled:value('cpt-bundled'),notes:value('cpt-notes'),active:$('cpt-active').checked});
+        await refreshCatalogMaintenanceData(); $('cat-pt-search').value = updated.label; loadCatalogPT(); setStatus('catalog-status','PT game saved.');
+      } catch (error) { setStatus('catalog-status', error.message, true); }
+    });
+  }
+  function loadCatalogPaper() {
+    CAT_PAPER = CATALOG_DATA.paper.find((x) => x.label === $('cat-paper-search').value) || null;
+    if (!CAT_PAPER) return;
+    $('cat-paper-fields').innerHTML = field('cp-short','Short Name',CAT_PAPER.shortName) + field('cp-desc','Description',CAT_PAPER.description) + field('cp-order','Display Order',CAT_PAPER.displayOrder,'number') + field('cp-packbox','Packs per Box',CAT_PAPER.packsPerBox,'number') + field('cp-boxcase','Boxes per Case',CAT_PAPER.boxesPerCase,'number') + field('cp-cost','Manufacturer Cost per Case',CAT_PAPER.manufacturerCostPerCase,'number') + field('cp-price','Sales Price per Pack',CAT_PAPER.salesPricePerPack,'number') + field('cp-target','Target On Hand',CAT_PAPER.targetOnHand,'number') + field('cp-notes','Notes',CAT_PAPER.notes) + `<div><label><input id="cp-active" type="checkbox" ${CAT_PAPER.active ? 'checked' : ''}> Active</label></div>`;
+  }
+  async function saveCatalogPaper() {
+    if (!CAT_PAPER) return;
+    await withBusyButton('save-catalog-paper', async () => {
+      const value = (id) => $(id).value;
+      try {
+        const updated = await server('updatePaperType', ADMIN_TOKEN, {paperId:CAT_PAPER.paperId,shortName:value('cp-short'),description:value('cp-desc'),displayOrder:value('cp-order'),packsPerBox:value('cp-packbox'),boxesPerCase:value('cp-boxcase'),manufacturerCostPerCase:value('cp-cost'),salesPricePerPack:value('cp-price'),targetOnHand:value('cp-target'),notes:value('cp-notes'),active:$('cp-active').checked});
+        await refreshCatalogMaintenanceData(); $('cat-paper-search').value = updated.label; loadCatalogPaper(); setStatus('catalog-status','Paper type saved.');
+      } catch (error) { setStatus('catalog-status', error.message, true); }
+    });
+  }
 </script>
 
 
@@ -1438,7 +1482,7 @@ FILE: AppOrdering.html
         id="create-paper-type-button"
         class="btn"
         type="button"
-        onclick="saveNewPaperTypeDiagnostic()"
+        onclick="saveNewPaperType()"
       >
         Create Paper Type
       </button>
@@ -1577,7 +1621,7 @@ FILE: AppOrdering.html
       $('order-pt-form').value;
 
 
-    if (selectedIndex === '') {
+    if (!selectedLabel) {
 
       $('order-pt-case-size-display').textContent =
         'Select a game';
@@ -1609,7 +1653,7 @@ FILE: AppOrdering.html
       $('order-pt-form').value;
 
 
-    if (selectedIndex === '') {
+    if (!selectedLabel) {
 
       setStatus(
         'order-status',
@@ -1777,376 +1821,36 @@ FILE: AppOrdering.html
   }
 
 
-  /* ================================================================
-     ADD NEW PAPER TYPE - TARGETED DIAGNOSTIC
-     ================================================================ */
-
-  function requirePaperControl(
-    elementId,
-    friendlyName
-  ) {
-
-    const element =
-      document.getElementById(
-        elementId
-      );
-
-
-    if (!element) {
-
-      throw new Error(
-        `Paper dialog is missing the ${friendlyName} control ` +
-        `(expected id="${elementId}").`
-      );
-    }
-
-
-    return element;
-  }
-
-
-  function showPaperDebug(value) {
-
-    const debugElement =
-      document.getElementById(
-        'new-paper-debug'
-      );
-
-
-    if (!debugElement) {
-
-      return;
-    }
-
-
-    debugElement.style.display =
-      'block';
-
-
-    if (
-      typeof value === 'string'
-    ) {
-
-      debugElement.textContent =
-        value;
-
-      return;
-    }
-
-
-    try {
-
-      debugElement.textContent =
-        JSON.stringify(
-          value,
-          null,
-          2
-        );
-
-    } catch (error) {
-
-      debugElement.textContent =
-        String(value);
-    }
-  }
-
-
-  /**
-   * Diagnostic Paper Type creation.
-   *
-   * The modal deliberately remains open after both success and failure.
-   * We need to see the returned server record on screen.
-   */
-  async function saveNewPaperTypeDiagnostic() {
-
-    const createButton =
-      requirePaperControl(
-        'create-paper-type-button',
-        'Create Paper Type button'
-      );
-
-
-    createButton.disabled =
-      true;
-
-
-    clearStatus(
-      'new-paper-status'
-    );
-
-
-    showPaperDebug(
-      'Beginning Paper Type diagnostic...'
-    );
-
-
-    try {
-
-      setStatus(
-        'new-paper-status',
-        'Step 1: Create Paper Type button clicked.'
-      );
-
-
-      const shortNameControl =
-        requirePaperControl(
-          'new-paper-short-name',
-          'Short Name'
-        );
-
-
-      const descriptionControl =
-        requirePaperControl(
-          'new-paper-description',
-          'Description'
-        );
-
-
-      const displayOrderControl =
-        requirePaperControl(
-          'new-paper-display-order',
-          'Display Order'
-        );
-
-
-      const packsPerBoxControl =
-        requirePaperControl(
-          'new-paper-packs-per-box',
-          'Packs per Box'
-        );
-
-
-      const boxesPerCaseControl =
-        requirePaperControl(
-          'new-paper-boxes-per-case',
-          'Boxes per Case'
-        );
-
-
-      const costPerCaseControl =
-        requirePaperControl(
-          'new-paper-cost-per-case',
-          'Manufacturer Cost per Case'
-        );
-
-
-      const salesPriceControl =
-        requirePaperControl(
-          'new-paper-sales-price',
-          'Sales Price per Pack'
-        );
-
-
-      const targetControl =
-        requirePaperControl(
-          'new-paper-target',
-          'Target On Hand'
-        );
-
-
-      const notesControl =
-        requirePaperControl(
-          'new-paper-notes',
-          'Notes'
-        );
-
-
-      const payload = {
-
-        shortName:
-          shortNameControl.value,
-
-        description:
-          descriptionControl.value,
-
-        displayOrder:
-          displayOrderControl.value,
-
-        packsPerBox:
-          packsPerBoxControl.value,
-
-        boxesPerCase:
-          boxesPerCaseControl.value,
-
-        manufacturerCostPerCase:
-          costPerCaseControl.value,
-
-        salesPricePerPack:
-          salesPriceControl.value,
-
-        targetOnHand:
-          targetControl.value,
-
-        notes:
-          notesControl.value
-      };
-
-
-      setStatus(
-        'new-paper-status',
-        'Step 2: Payload constructed.'
-      );
-
-
-      showPaperDebug({
-        stage:
-          'Browser payload before createPaperType()',
-
-        payload:
-          payload
+    /* ================================================================
+       ADD NEW PAPER TYPE
+       ================================================================ */
+    async function saveNewPaperType() {
+      const button = $('create-paper-type-button');
+      await withBusyButton(button, async () => {
+        clearStatus('new-paper-status');
+        try {
+          const result = await server('createPaperType', ADMIN_TOKEN, {
+            shortName: $('new-paper-short-name').value,
+            description: $('new-paper-description').value,
+            displayOrder: $('new-paper-display-order').value,
+            packsPerBox: $('new-paper-packs-per-box').value,
+            boxesPerCase: $('new-paper-boxes-per-case').value,
+            manufacturerCostPerCase: $('new-paper-cost-per-case').value,
+            salesPricePerPack: $('new-paper-sales-price').value,
+            targetOnHand: $('new-paper-target').value,
+            notes: $('new-paper-notes').value
+          });
+          ORDER_CATALOGS = await server('getOrderingCatalogs', ADMIN_TOKEN);
+          renderOrderingCatalogs();
+          $('order-paper-type').value = result.label;
+          showSelectedPaperCaseSize();
+          closeModal('new-paper-modal');
+          setStatus('order-status', `${result.shortName} was created and selected.`);
+        } catch (error) {
+          setStatus('new-paper-status', error.message, true);
+        }
       });
-
-
-      const result =
-        await server(
-          'createPaperType',
-          ADMIN_TOKEN,
-          payload
-        );
-
-
-      /*
-       * THIS is the information we need from the next test.
-       *
-       * The returned object includes result.createdPaper from Catalog.gs.
-       */
-      setStatus(
-        'new-paper-status',
-
-        `Step 3: createPaperType() returned ${result.paperId}. ` +
-        'Read-back record is displayed below.'
-      );
-
-
-      showPaperDebug({
-        stage:
-          'createPaperType() server result',
-
-        paperId:
-          result.paperId,
-
-        shortName:
-          result.shortName,
-
-        appendedRowNumber:
-          result.appendedRowNumber,
-
-        createdPaper:
-          result.createdPaper
-      });
-
-
-      /*
-       * Stop here briefly in the logic conceptually: result.createdPaper
-       * has now been rendered to the screen BEFORE getOrderingCatalogs()
-       * is called.
-       */
-
-
-      ORDER_CATALOGS =
-        await server(
-          'getOrderingCatalogs',
-          ADMIN_TOKEN
-        );
-
-
-      const selectedIndex =
-        ORDER_CATALOGS.paper.findIndex(
-          (paper) => {
-
-            return (
-              paper.paperId ===
-              result.paperId
-            );
-          }
-        );
-
-
-      if (selectedIndex < 0) {
-
-        setStatus(
-          'new-paper-status',
-
-          `${result.paperId} was created and read back by the server, ` +
-          'but it is NOT present in getOrderingCatalogs(). ' +
-          'Inspect the read-back record displayed below.',
-
-          true
-        );
-
-
-        /*
-         * DO NOT overwrite the debug display here.
-         *
-         * We specifically want result.createdPaper to remain visible.
-         */
-        return;
-      }
-
-
-      renderOrderingCatalogs();
-
-
-      $('order-paper-type').value =
-        String(selectedIndex);
-
-
-      showSelectedPaperCaseSize();
-
-
-      setStatus(
-        'new-paper-status',
-
-        `SUCCESS: ${result.shortName} was created as ${result.paperId} ` +
-        'and appears in the refreshed Paper ordering catalog.'
-      );
-
-
-      showPaperDebug({
-        stage:
-          'Success',
-
-        createdPaper:
-          result.createdPaper,
-
-        refreshedOrderingRecord:
-          ORDER_CATALOGS.paper[
-            selectedIndex
-          ]
-      });
-
-
-      /*
-       * Deliberately leave the modal open.
-       */
-
-    } catch (error) {
-
-      setStatus(
-        'new-paper-status',
-        `FAILED: ${error.message}`,
-        true
-      );
-
-
-      showPaperDebug({
-        stage:
-          'Browser error',
-
-        message:
-          error.message,
-
-        stack:
-          error.stack || ''
-      });
-
-    } finally {
-
-      createButton.disabled =
-        false;
     }
-  }
-
 </script>
 
 ================================================================
@@ -3460,7 +3164,7 @@ FILE: AppPaperReconciliation.html
   async function openPaperReconciliation() {
     showScreen('paper-reconciliation-screen');
 
-    $('paper-recon-date').valueAsDate = new Date();
+    $('paper-recon-date').value = localIsoDate();
     clearStatus('paper-recon-status');
 
     try {
@@ -4253,15 +3957,22 @@ function addAlternateFormToGame(token, gameId, formNumber) {
 function getPaperCatalog_(){
   return getRecords_('Paper_Catalog');
 }
-function getOrderingCatalogs(token){
+function getOrderingCatalogs(token) {
   requireAdmin_(token);
+  const games = getPTCatalog_();
+  const gamesById = new Map(games.map((game) => [String(game.PT_Game_ID), game]));
   return {
-    pt:buildPTFormOptions_().map(x=>Object.assign(x,{
-      dealsPerCase:Number((getPTCatalog_().find(g=>String(g.PT_Game_ID)===x.gameId)||{
-      }).Deals_Per_Case)||0
-    })),paper:getPaperCatalog_().filter(x=>x.Active===true||String(x.Active).toLowerCase()==='true').map(x=>({
-      paperId:String(x.Paper_ID),shortName:String(x.Short_Name),description:String(x.Description),packsPerCase:Number(x.Packs_Per_Case),label:`${x.Short_Name} - ${x.Description}`
-    })).sort((a,b)=>a.label.localeCompare(b.label)),gameTypes:PT_GAME_TYPES
+    pt: buildPTFormOptions_().map((option) => Object.assign(option, {
+      dealsPerCase: Number((gamesById.get(option.gameId) || {}).Deals_Per_Case || 0)
+    })),
+    paper: getPaperCatalog_().filter(isActiveCatalogRecord_).map((paper) => ({
+      paperId: String(paper.Paper_ID),
+      shortName: String(paper.Short_Name),
+      description: String(paper.Description),
+      packsPerCase: Number(paper.Packs_Per_Case),
+      label: `${paper.Short_Name} - ${paper.Description}`
+    })).sort((a, b) => a.label.localeCompare(b.label)),
+    gameTypes: PT_GAME_TYPES
   };
 }
 function createPaperType(token, payload) {
@@ -4358,33 +4069,14 @@ function createPaperType(token, payload) {
     Notes: normalizeText_(payload.notes)
   };
 
-  const appendedRowNumber = appendRecord_(
-    'Paper_Catalog',
-    recordToWrite
-  );
-
-  SpreadsheetApp.flush();
-
-  const createdPaper = getPaperCatalog_().find((paper) => {
-    return String(paper.Paper_ID) === String(paperId);
-  });
-
-  if (!createdPaper) {
-    throw new Error(
-      `Paper type ${paperId} was written to row ${appendedRowNumber} ` +
-      'but could not be read back from Paper_Catalog.'
-    );
+    appendRecord_('Paper_Catalog', recordToWrite);
+    return {
+      paperId: paperId,
+      shortName: shortName,
+      description: description,
+      label: `${shortName} - ${description}`
+    };
   }
-
-  return {
-    paperId: paperId,
-    shortName: shortName,
-    label: `${shortName} - ${description}`,
-    appendedRowNumber: appendedRowNumber,
-    createdPaper: createdPaper
-  };
-}
-
 function getCatalogMaintenanceData(token) {
   requireAdmin_(token);
   return {
@@ -4406,37 +4098,81 @@ function getCatalogMaintenanceData(token) {
 }
 
 function updatePTGame(token, payload) {
-  requireAdmin_(token); payload=payload||{};
-  const game=getPTCatalog_().find(g=>String(g.PT_Game_ID)===String(payload.gameId));
-  if(!game) throw new Error('PT game was not found.');
-  const primary=assertFormAvailable_(payload.primaryFormNumber,game.PT_Game_ID);
-  const alts=splitAlternateForms_(payload.alternateFormNumbers); alts.forEach(f=>assertFormAvailable_(f,game.PT_Game_ID));
-  const cards=integerOrThrow_(payload.cardsPerDeal,'Cards per Deal',{allowZero:false});
-  const deals=integerOrThrow_(payload.dealsPerCase,'Deals per Case',{allowZero:false});
-  const price=numberOrThrow_(payload.pricePerCard,'Price per Card'); const payout=numberOrThrow_(payload.payoutPerDeal,'Payout per Deal');
-  const cost=numberOrThrow_(payload.manufacturerCostPerDeal,'Manufacturer Cost per Deal'); const gross=cards*price; const net=gross-payout-cost;
-  updateRecordRow_('PT_Catalog',game._rowNumber,{Game_Name:normalizeText_(payload.gameName),Game_Type:payload.gameType,Primary_Form_Number:primary,
-    Alternate_Form_Numbers:alts.join(', '),Active:Boolean(payload.active),Display_Order:integerOrThrow_(payload.displayOrder,'Display Order'),
-    Cards_Per_Deal:cards,Deals_Per_Case:deals,Price_Per_Card:price,Payout_Per_Deal:payout,Manufacturer_Cost_Per_Deal:cost,
-    Gross_Receipts_Per_Deal:gross,Gaming_Income_Before_Cost:gross-payout,Net_Income_Per_Deal:net,
-    Net_Income_Per_Patron_Dollar:gross?net/gross:0,Manufacturer_Cost_Per_Patron_Dollar:gross?cost/gross:0,
-    Manufacturer_Cost_Per_Case:cost*deals,Target_On_Hand:integerOrThrow_(payload.targetOnHand,'Target On Hand'),
-    Target_Bundled:integerOrThrow_(payload.targetBundled,'Target Bundled'),Notes:normalizeText_(payload.notes)});
-  return {ok:true};
+  requireAdmin_(token);
+  payload = payload || {};
+  const game = getPTCatalog_().find((row) => String(row.PT_Game_ID) === String(payload.gameId));
+  if (!game) throw new Error('PT game was not found.');
+  const name = normalizeText_(payload.gameName);
+  if (!name) throw new Error('Game Name is required.');
+  if (!PT_GAME_TYPES.includes(payload.gameType)) throw new Error('Select a valid Game Type.');
+  const primary = assertFormAvailable_(payload.primaryFormNumber, game.PT_Game_ID);
+  const alternates = splitAlternateForms_(payload.alternateFormNumbers);
+  if (alternates.includes(primary)) throw new Error('Primary Form Number cannot also appear as an alternate.');
+  alternates.forEach((form) => assertFormAvailable_(form, game.PT_Game_ID));
+  const cards = integerOrThrow_(payload.cardsPerDeal, 'Cards per Deal', {allowZero: false});
+  const deals = integerOrThrow_(payload.dealsPerCase, 'Deals per Case', {allowZero: false});
+  const price = numberOrThrow_(payload.pricePerCard, 'Price per Card');
+  const payout = numberOrThrow_(payload.payoutPerDeal, 'Payout per Deal');
+  const cost = numberOrThrow_(payload.manufacturerCostPerDeal, 'Manufacturer Cost per Deal');
+  const gross = cards * price;
+  const net = gross - payout - cost;
+  updateRecordRow_('PT_Catalog', game._rowNumber, {
+    Game_Name: name, Game_Type: payload.gameType, Primary_Form_Number: primary,
+    Alternate_Form_Numbers: alternates.join(', '), Active: Boolean(payload.active),
+    Display_Order: integerOrThrow_(payload.displayOrder, 'Display Order'), Cards_Per_Deal: cards,
+    Deals_Per_Case: deals, Price_Per_Card: price, Payout_Per_Deal: payout,
+    Manufacturer_Cost_Per_Deal: cost, Gross_Receipts_Per_Deal: gross,
+    Gaming_Income_Before_Cost: gross - payout, Net_Income_Per_Deal: net,
+    Net_Income_Per_Patron_Dollar: gross ? net / gross : 0,
+    Manufacturer_Cost_Per_Patron_Dollar: gross ? cost / gross : 0,
+    Manufacturer_Cost_Per_Case: cost * deals,
+    Target_On_Hand: integerOrThrow_(payload.targetOnHand, 'Target On Hand'),
+    Target_Bundled: integerOrThrow_(payload.targetBundled, 'Target Bundled'),
+    Notes: normalizeText_(payload.notes)
+  });
+  return Object.assign({}, payload, {
+    gameId: String(game.PT_Game_ID), gameName: name, gameType: payload.gameType,
+    primaryFormNumber: primary, alternateFormNumbers: alternates.join(', '),
+    label: `${name} (${primary})`
+  });
 }
 
-function updatePaperType(token,payload){
-  requireAdmin_(token); payload=payload||{}; const paper=getPaperCatalog_().find(p=>String(p.Paper_ID)===String(payload.paperId));
-  if(!paper) throw new Error('Paper type was not found.');
-  const ppb=numberOrThrow_(payload.packsPerBox,'Packs per Box'); const bpc=integerOrThrow_(payload.boxesPerCase,'Boxes per Case',{allowZero:false});
-  const ppc=ppb*bpc; if(!Number.isInteger(ppc)) throw new Error('Packs per case must be a whole number.');
-  const cost=numberOrThrow_(payload.manufacturerCostPerCase,'Manufacturer Cost per Case'); const price=numberOrThrow_(payload.salesPricePerPack,'Sales Price per Pack');
-  const cpp=ppc?cost/ppc:0; const net=price-cpp;
-  updateRecordRow_('Paper_Catalog',paper._rowNumber,{Short_Name:normalizeText_(payload.shortName).toUpperCase(),Description:normalizeText_(payload.description),
-    Active:Boolean(payload.active),Display_Order:integerOrThrow_(payload.displayOrder,'Display Order'),Packs_Per_Box:ppb,Boxes_Per_Case:bpc,Packs_Per_Case:ppc,
-    Manufacturer_Cost_Per_Case:cost,Manufacturer_Cost_Per_Pack:cpp,Sales_Price_Per_Pack:price,Net_Income_Per_Pack:net,
-    Net_Income_Per_Patron_Dollar:price?net/price:0,Manufacturer_Cost_Per_Patron_Dollar:price?cpp/price:0,
-    Target_On_Hand:integerOrThrow_(payload.targetOnHand,'Target On Hand'),Notes:normalizeText_(payload.notes)}); return {ok:true};
+function updatePaperType(token, payload) {
+  requireAdmin_(token);
+  payload = payload || {};
+  const paper = getPaperCatalog_().find((row) => String(row.Paper_ID) === String(payload.paperId));
+  if (!paper) throw new Error('Paper type was not found.');
+  const shortName = normalizeText_(payload.shortName).toUpperCase();
+  const description = normalizeText_(payload.description);
+  if (!shortName || !description) throw new Error('Paper Short Name and Description are required.');
+  const duplicate = getPaperCatalog_().find((row) => {
+    return String(row.Paper_ID) !== String(payload.paperId) && isActiveCatalogRecord_(row) &&
+      normalizeText_(row.Short_Name).toUpperCase() === shortName;
+  });
+  if (duplicate && payload.active) throw new Error(`Active paper type ${shortName} already exists.`);
+  const packsPerBox = numberOrThrow_(payload.packsPerBox, 'Packs per Box');
+  const boxesPerCase = integerOrThrow_(payload.boxesPerCase, 'Boxes per Case', {allowZero: false});
+  const packsPerCase = packsPerBox * boxesPerCase;
+  if (!Number.isInteger(packsPerCase)) throw new Error('Packs per case must be a whole number.');
+  const cost = numberOrThrow_(payload.manufacturerCostPerCase, 'Manufacturer Cost per Case');
+  const price = numberOrThrow_(payload.salesPricePerPack, 'Sales Price per Pack');
+  const costPerPack = packsPerCase ? cost / packsPerCase : 0;
+  const net = price - costPerPack;
+  updateRecordRow_('Paper_Catalog', paper._rowNumber, {
+    Short_Name: shortName, Description: description, Active: Boolean(payload.active),
+    Display_Order: integerOrThrow_(payload.displayOrder, 'Display Order'), Packs_Per_Box: packsPerBox,
+    Boxes_Per_Case: boxesPerCase, Packs_Per_Case: packsPerCase,
+    Manufacturer_Cost_Per_Case: cost, Manufacturer_Cost_Per_Pack: costPerPack,
+    Sales_Price_Per_Pack: price, Net_Income_Per_Pack: net,
+    Net_Income_Per_Patron_Dollar: price ? net / price : 0,
+    Manufacturer_Cost_Per_Patron_Dollar: price ? costPerPack / price : 0,
+    Target_On_Hand: integerOrThrow_(payload.targetOnHand, 'Target On Hand'),
+    Notes: normalizeText_(payload.notes)
+  });
+  return Object.assign({}, payload, {
+    paperId: String(paper.Paper_ID), shortName: shortName, description: description,
+    packsPerCase: packsPerCase, label: `${shortName} - ${description}`
+  });
 }
 
 
@@ -4600,6 +4336,7 @@ function getHeaderMap_(sheet) {
  * @return {Object[]}
  */
 const EXECUTION_RECORD_CACHE_ = Object.create(null);
+let EXECUTION_NATIVE_TABLE_CACHE_ = null;
 function invalidateRecordCache_(sheetName) {
   delete EXECUTION_RECORD_CACHE_[sheetName];
 }
@@ -4757,113 +4494,24 @@ function getRecords_(sheetName) {
  * @return {Object|null}
  */
 function getNativeTableForSheet_(sheet) {
-
-  const spreadsheet = getInventorySpreadsheet_();
-
-  const apiSpreadsheet = Sheets.Spreadsheets.get(
-    spreadsheet.getId(),
-    {
-      includeGridData: false
-    }
-  );
-
-  const apiSheet =
-    (apiSpreadsheet.sheets || [])
-      .find(
-        (candidate) => {
-
-          return (
-            candidate.properties.sheetId ===
-            sheet.getSheetId()
-          );
-        }
-      );
-
-  if (
-    !apiSheet ||
-    !(apiSheet.tables || []).length
-  ) {
-
-    return null;
-  }
-
-  return apiSheet.tables[0];
-}
-
-
-/**
- * Finds the first blank permanent-ID row inside a native Table.
- *
- * If the Table contains no empty data row, the Table is expanded by twenty
- * rows and the first newly available row is returned.
- *
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
- * @param {Object} table
- * @return {number}
- */
-function findFirstEmptyTableRow_(sheet, table) {
-
-  /*
-   * GridRange indices are zero-based and endRowIndex is exclusive.
-   * The worksheet's first data row is one row below the Table header.
-   */
-  const firstDataRow =
-    table.range.startRowIndex + 2;
-
-  const lastTableWorksheetRow =
-    table.range.endRowIndex;
-
-  const availableRows =
-    lastTableWorksheetRow -
-    firstDataRow +
-    1;
-
-  if (availableRows > 0) {
-
-    const primaryIds = sheet
-      .getRange(
-        firstDataRow,
-        1,
-        availableRows,
-        1
-      )
-      .getDisplayValues();
-
-    const emptyOffset = primaryIds.findIndex(
-      (row) => {
-
-        return normalizeText_(row[0]) === '';
-      }
+  if (!EXECUTION_NATIVE_TABLE_CACHE_) {
+    const spreadsheet = getInventorySpreadsheet_();
+    const response = Sheets.Spreadsheets.get(
+      spreadsheet.getId(),
+      { includeGridData: false }
     );
-
-    if (emptyOffset >= 0) {
-
-      return firstDataRow + emptyOffset;
-    }
+    EXECUTION_NATIVE_TABLE_CACHE_ = new Map();
+    (response.sheets || []).forEach((apiSheet) => {
+      const table = (apiSheet.tables || [])[0] || null;
+      EXECUTION_NATIVE_TABLE_CACHE_.set(
+        String(apiSheet.properties.sheetId),
+        table
+      );
+    });
   }
-
-  const expansionRows = 20;
-
-  const firstNewWorksheetRow =
-    lastTableWorksheetRow + 1;
-
-  const expandedLastWorksheetRow =
-    lastTableWorksheetRow +
-    expansionRows;
-
-  ensureSheetRowCapacity_(
-    sheet,
-    expandedLastWorksheetRow
-  );
-
-  resizeNativeTable_(
-    table,
-    expandedLastWorksheetRow
-  );
-
-  return firstNewWorksheetRow;
+  const table = EXECUTION_NATIVE_TABLE_CACHE_.get(String(sheet.getSheetId()));
+  return table ? JSON.parse(JSON.stringify(table)) : null;
 }
-
 
 /**
  * Changes only the ending row of a native Google Sheets Table.
@@ -4925,228 +4573,67 @@ function ensureSheetRowCapacity_(
 }
 
 /**
- * Converts a positive column number into its A1 column letters.
- *
- * Examples:
- *
- *   1  -> A
- *   21 -> U
- *   27 -> AA
- *
- * @param {number} columnNumber
- * @return {string}
- */
-function columnNumberToLetter_(columnNumber) {
-
-  let number = Number(columnNumber);
-
-  if (
-    !Number.isInteger(number) ||
-    number < 1
-  ) {
-
-    throw new Error(
-      `Invalid column number: ${columnNumber}`
-    );
-  }
-
-  let columnLetters = '';
-
-  while (number > 0) {
-
-    const remainder =
-      (number - 1) % 26;
-
-    columnLetters =
-      String.fromCharCode(
-        65 + remainder
-      ) +
-      columnLetters;
-
-    number =
-      Math.floor(
-        (number - 1) / 26
-      );
-  }
-
-  return columnLetters;
-}
-
-
-/**
- * Extracts the first worksheet row number from an A1 range.
- *
- * Examples:
- *
- *   PT_Catalog!A21:U21 -> 21
- *   'PT Catalog'!A5:U5 -> 5
- *
- * @param {string} a1Range
- * @return {number|null}
- */
-function extractFirstRowNumberFromA1_(a1Range) {
-
-  if (!a1Range) {
-
-    return null;
-  }
-
-  const cellRange =
-    String(a1Range)
-      .split('!')
-      .pop();
-
-  const firstCell =
-    cellRange
-      .split(':')[0];
-
-  const match =
-    firstCell.match(
-      /(\d+)$/
-    );
-
-  if (!match) {
-
-    return null;
-  }
-
-  return Number(
-    match[1]
-  );
-}
-
-
-/**
  * Updates specific fields on an existing record row.
  *
  * @param {string} sheetName
  * @param {number} rowNumber
  * @param {Object} updates
  */
-function updateRecordRow_(
-  sheetName,
-  rowNumber,
-  updates
-) {
-
-  const sheet =
-    getSheetOrThrow_(sheetName);
-
-  const headerMap =
-    getHeaderMap_(sheet);
-
-
-  Object.entries(updates).forEach(
-    ([header, value]) => {
-
-      if (!(header in headerMap)) {
-
-        throw new Error(
-          `Unknown ${sheetName} column: ${header}`
-        );
-      }
-
-
-      sheet
-        .getRange(
-          rowNumber,
-          headerMap[header] + 1
-        )
-        .setValue(value);
-    }
-  );
-  invalidateRecordCache_(sheetName);
+function updateRecordRow_(sheetName, rowNumber, updates) {
+  updateRecordRows_(sheetName, [
+    { rowNumber: rowNumber, updates: updates }
+  ]);
 }
 
-
 /**
- * Updates multiple existing record rows.
- *
- * Each item must contain:
- *
- *   {
- *     rowNumber: 12,
- *     updates: {
- *       Current_Packs: 24,
- *       Balance_Updated_At: new Date()
- *     }
- *   }
- *
- * Values for adjacent columns are written together. This avoids the
- * cell-by-cell writes performed by updateRecordRow_() while preserving
- * columns that are not part of the requested update.
- *
- * @param {string} sheetName
- * @param {Object[]} rowUpdates
+ * Applies sparse row updates through one rectangular read and one write.
  */
 function updateRecordRows_(sheetName, rowUpdates) {
   const updatesToApply = Array.isArray(rowUpdates)
     ? rowUpdates.filter((item) => {
-        return (
-          item &&
-          Number.isInteger(Number(item.rowNumber)) &&
-          Number(item.rowNumber) >= 2 &&
-          item.updates &&
-          Object.keys(item.updates).length > 0
-        );
+        return item && Number(item.rowNumber) >= 2 && item.updates &&
+          Object.keys(item.updates).length;
       })
     : [];
-
-  if (!updatesToApply.length) {
-    return;
-  }
+  if (!updatesToApply.length) return;
 
   const sheet = getSheetOrThrow_(sheetName);
   const headerMap = getHeaderMap_(sheet);
+  const rowsByNumber = new Map();
+  let minRow = Infinity;
+  let maxRow = 0;
+  let minColumn = Infinity;
+  let maxColumn = 0;
 
   updatesToApply.forEach((item) => {
-    const entries = Object.entries(item.updates)
-      .map(([header, value]) => {
-        if (!(header in headerMap)) {
-          throw new Error(`Unknown ${sheetName} column: ${header}`);
-        }
-
-        return {
-          column: headerMap[header] + 1,
-          value: value
-        };
-      })
-      .sort((first, second) => first.column - second.column);
-
-    let group = [];
-
-    const writeGroup = () => {
-      if (!group.length) {
-        return;
+    const rowNumber = Number(item.rowNumber);
+    const merged = rowsByNumber.get(rowNumber) || {};
+    Object.entries(item.updates).forEach(([header, value]) => {
+      if (!(header in headerMap)) {
+        throw new Error(`Unknown ${sheetName} column: ${header}`);
       }
-
-      sheet
-        .getRange(
-          Number(item.rowNumber),
-          group[0].column,
-          1,
-          group.length
-        )
-        .setValues([
-          group.map((entry) => entry.value)
-        ]);
-
-      group = [];
-    };
-
-    entries.forEach((entry) => {
-      if (
-        group.length &&
-        entry.column !== group[group.length - 1].column + 1
-      ) {
-        writeGroup();
-      }
-
-      group.push(entry);
+      merged[header] = value;
+      const column = headerMap[header] + 1;
+      minColumn = Math.min(minColumn, column);
+      maxColumn = Math.max(maxColumn, column);
     });
-
-    writeGroup();
+    rowsByNumber.set(rowNumber, merged);
+    minRow = Math.min(minRow, rowNumber);
+    maxRow = Math.max(maxRow, rowNumber);
   });
+
+  const rowCount = maxRow - minRow + 1;
+  const columnCount = maxColumn - minColumn + 1;
+  const range = sheet.getRange(minRow, minColumn, rowCount, columnCount);
+  const values = range.getValues();
+
+  rowsByNumber.forEach((updates, rowNumber) => {
+    Object.entries(updates).forEach(([header, value]) => {
+      values[rowNumber - minRow][headerMap[header] + 1 - minColumn] = value;
+    });
+  });
+
+  range.setValues(values);
   invalidateRecordCache_(sheetName);
 }
 
@@ -5357,154 +4844,6 @@ function now_() {
 }
 
 
-/**
- * One-time V1.3 recovery helper.
- *
- * The first test PT game was written below the original PT_Catalog
- * native Table because the pre-V1.3 appendRecord_() used appendRow().
- *
- * This helper expands the PT_Catalog native table sufficiently to
- * include all currently populated worksheet rows.
- *
- * Run this ONCE after installing V1.3 if PT_Catalog contains a record
- * below the current native Table range.
- *
- * This helper does not move, modify, or duplicate any catalog data.
- */
-function recoverPTCatalogTableRangeV13() {
-
-  const spreadsheet =
-    getInventorySpreadsheet_();
-
-  const sheet =
-    getSheetOrThrow_(
-      'PT_Catalog'
-    );
-
-  const lastDataRow =
-    sheet.getLastRow();
-
-
-  if (lastDataRow < 2) {
-
-    return {
-      changed: false,
-      message: 'PT_Catalog contains no data rows to recover.'
-    };
-  }
-
-
-  const apiSpreadsheet =
-    Sheets.Spreadsheets.get(
-
-      spreadsheet.getId(),
-
-      {
-        includeGridData: false
-      }
-    );
-
-
-  const apiSheet =
-    (apiSpreadsheet.sheets || [])
-      .find(
-        (candidate) => {
-
-          return (
-            candidate.properties.sheetId ===
-            sheet.getSheetId()
-          );
-        }
-      );
-
-
-  if (!apiSheet) {
-
-    throw new Error(
-      'PT_Catalog API sheet metadata could not be found.'
-    );
-  }
-
-
-  const table =
-    (apiSheet.tables || [])
-      .find(
-        (candidate) => {
-
-          return (
-            candidate.name ===
-            'PT_Catalog_Table'
-          );
-        }
-      );
-
-
-  if (!table) {
-
-    throw new Error(
-      'PT_Catalog_Table could not be found.'
-    );
-  }
-
-
-  /*
-   * API table ranges use an exclusive endRowIndex.
-   *
-   * Worksheet row 21 therefore requires endRowIndex >= 21.
-   */
-  const currentEndRowIndex =
-    table.range.endRowIndex || 0;
-
-
-  if (
-    currentEndRowIndex >=
-    lastDataRow
-  ) {
-
-    return {
-      changed: false,
-      message:
-        'PT_Catalog_Table already includes all populated rows.'
-    };
-  }
-
-
-  const updatedTable =
-    JSON.parse(
-      JSON.stringify(table)
-    );
-
-
-  updatedTable.range.endRowIndex =
-    lastDataRow;
-
-
-  Sheets.Spreadsheets.batchUpdate(
-
-    {
-      requests: [
-        {
-          updateTable: {
-            table: updatedTable,
-            fields: 'range'
-          }
-        }
-      ]
-    },
-
-    spreadsheet.getId()
-  );
-
-
-  return {
-    changed: true,
-    lastDataRow: lastDataRow,
-    message:
-      `PT_Catalog_Table was expanded through worksheet row ${lastDataRow}.`
-  };
-}
-
-
 ================================================================
 FILE: Dashboard.js
 ================================================================
@@ -5516,57 +4855,39 @@ const DASHBOARD_SESSIONS_PER_WEEK = 3;
 function getDashboardData() {
   const games = getPTCatalog_().filter(isActiveCatalogRecord_);
   const papers = getPaperCatalog_().filter(isActiveCatalogRecord_);
-  const deals = getPTDeals_();
-  const cases = getPaperCases_();
   const transactions = getRecords_('Transactions');
   const recentSessionIds = getRecentProcessedSessionIds_(transactions);
   const recentSet = new Set(recentSessionIds);
-
-  const pt = games.map((game) => {
-    const gameDeals = deals.filter((deal) => String(deal.PT_Game_ID) === String(game.PT_Game_ID));
-    const sold = transactions.filter((transaction) => {
-      return String(transaction.Inventory_Type) === 'PT' &&
-        String(transaction.Product_ID) === String(game.PT_Game_ID) &&
-        String(transaction.Transaction_Type) === 'Sold' &&
-        recentSet.has(String(transaction.Session_ID));
-    }).length;
-    return {
-      gameId: String(game.PT_Game_ID),
-      formNumber: normalizeFormNumber_(game.Primary_Form_Number),
-      label: `${game.Game_Name} (${normalizeFormNumber_(game.Primary_Form_Number)})`,
-      onHand: gameDeals.filter((deal) => ['Unbundled', 'Bundled'].includes(String(deal.Deal_Status))).length,
-      targetOnHand: Number(game.Target_On_Hand || 0),
-      bundled: gameDeals.filter((deal) => String(deal.Deal_Status) === 'Bundled').length,
-      targetBundled: Number(game.Target_Bundled || 0),
-      soldPerWeek: recentSessionIds.length ? sold / recentSessionIds.length * DASHBOARD_SESSIONS_PER_WEEK : 0,
-      netProfitPerDollar: Number(game.Net_Income_Per_Patron_Dollar || 0)
-    };
-  }).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
-
-  const paper = papers.map((catalogRow) => {
-    const productCases = cases.filter((paperCase) => String(paperCase.Paper_ID) === String(catalogRow.Paper_ID));
-    const caseIds = new Set(productCases.map((paperCase) => String(paperCase.Paper_Case_ID)));
-    const packsOnHand = transactions.filter((transaction) => {
-      return String(transaction.Inventory_Type) === 'Paper' && caseIds.has(String(transaction.Item_ID));
-    }).reduce((sum, transaction) => sum + Number(transaction.Quantity_Change || 0), 0);
-    const soldPacks = -transactions.filter((transaction) => {
-      return String(transaction.Inventory_Type) === 'Paper' &&
-        String(transaction.Product_ID) === String(catalogRow.Paper_ID) &&
-        String(transaction.Transaction_Type) === 'Sold' &&
-        recentSet.has(String(transaction.Session_ID));
-    }).reduce((sum, transaction) => sum + Number(transaction.Quantity_Change || 0), 0);
-    return {
-      paperId: String(catalogRow.Paper_ID),
-      label: `${catalogRow.Short_Name} - ${catalogRow.Description}`,
-      packsOnHand: packsOnHand,
-      targetOnHand: Number(catalogRow.Target_On_Hand || 0),
-      soldPerWeek: recentSessionIds.length ? soldPacks / recentSessionIds.length * DASHBOARD_SESSIONS_PER_WEEK : 0,
-      netProfitPerDollar: Number(catalogRow.Net_Income_Per_Patron_Dollar || 0),
-      packsPerCase: Number(catalogRow.Packs_Per_Case || 0)
-    };
-  }).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
-
-  return { pt, paper, sessionCount: recentSessionIds.length };
+  const ptSold = new Map();
+  const paperSold = new Map();
+  transactions.forEach((transaction) => {
+    if (String(transaction.Transaction_Type) !== 'Sold' || !recentSet.has(String(transaction.Session_ID))) return;
+    const key = String(transaction.Product_ID);
+    if (String(transaction.Inventory_Type) === 'PT') ptSold.set(key, (ptSold.get(key) || 0) + 1);
+    if (String(transaction.Inventory_Type) === 'Paper') paperSold.set(key, (paperSold.get(key) || 0) - Number(transaction.Quantity_Change || 0));
+  });
+  const divisor = recentSessionIds.length || 0;
+  const pt = games.map((game) => ({
+    gameId: String(game.PT_Game_ID),
+    formNumber: normalizeFormNumber_(game.Primary_Form_Number),
+    label: `${game.Game_Name} (${normalizeFormNumber_(game.Primary_Form_Number)})`,
+    onHand: Number(game.Qty_On_Hand || 0),
+    targetOnHand: Number(game.Target_On_Hand || 0),
+    bundled: Number(game.Qty_Bundled || 0),
+    targetBundled: Number(game.Target_Bundled || 0),
+    soldPerWeek: divisor ? (ptSold.get(String(game.PT_Game_ID)) || 0) / divisor * DASHBOARD_SESSIONS_PER_WEEK : 0,
+    netProfitPerDollar: Number(game.Net_Income_Per_Patron_Dollar || 0)
+  })).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
+  const paper = papers.map((row) => ({
+    paperId: String(row.Paper_ID),
+    label: `${row.Short_Name} - ${row.Description}`,
+    packsOnHand: Number(row.Qty_On_Hand || 0),
+    targetOnHand: Number(row.Target_On_Hand || 0),
+    soldPerWeek: divisor ? (paperSold.get(String(row.Paper_ID)) || 0) / divisor * DASHBOARD_SESSIONS_PER_WEEK : 0,
+    netProfitPerDollar: Number(row.Net_Income_Per_Patron_Dollar || 0),
+    packsPerCase: Number(row.Packs_Per_Case || 0)
+  })).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
+  return {pt, paper, sessionCount: recentSessionIds.length};
 }
 
 function isActiveCatalogRecord_(record) {
@@ -5712,11 +5033,11 @@ FILE: Index.html
      <? } ?>
      <? }); ?>
      <button class="tile" type="button" onclick="openDashboard()">
-      <div style="aspect-ratio:1;background:linear-gradient(135deg,#155b25,#6aa84f);display:grid;place-items:center;color:white;font-size:72px">▦</div>
+      <div class="tile-visual dashboard">▦</div>
       <div class="tile-copy"><h2>Inventory Dashboard</h2><p>Review active inventory and place the weekly order.</p></div>
      </button>
-     <button class="tile" onclick="openAdminLogin()">
-      <div style="aspect-ratio:1;background:linear-gradient(135deg,#08275a,#075db6);display:grid;place-items:center;color:white;font-size:88px">
+     <button class="tile" type="button" onclick="openAdminLogin()">
+      <div class="tile-visual admin">
        ⚙
       </div>
       <div class="tile-copy">
@@ -5729,7 +5050,7 @@ FILE: Index.html
       </div>
      </button>
     </div>
-    <p class="muted" style="text-align:center;margin-top:24px">
+    <p class="muted home-support">
      Support:
      <?= appConfig.supportEmail ?>
     </p>
@@ -5747,7 +5068,7 @@ FILE: Index.html
   </main>
   <div class="modal" id="admin-login-modal">
    <div class="modal-card">
-    <button class="close" onclick="closeModal('admin-login-modal')">
+    <button class="close" type="button" onclick="closeModal('admin-login-modal')">
      ×
     </button>
     <h2>
@@ -5758,10 +5079,10 @@ FILE: Index.html
     </label>
     <input autocomplete="one-time-code" id="admin-code" inputmode="numeric" type="password"/>
     <div class="actions" style="margin-top:16px">
-     <button class="btn" onclick="submitAdminLogin()">
+     <button class="btn" type="button" onclick="submitAdminLogin()">
       Continue
      </button>
-     <button class="btn secondary" onclick="closeModal('admin-login-modal')">
+     <button class="btn secondary" type="button" onclick="closeModal('admin-login-modal')">
       Cancel
      </button>
     </div>
@@ -5897,66 +5218,21 @@ function createPTDeal_(data) {
 }
 
 
-function updatePTDealStatus_(deal, newStatus) {
-  if (!PT_DEAL_STATUSES.includes(newStatus)) {
-    throw new Error(`Invalid PT Deal Status: ${newStatus}`);
-  }
-
-  const updates = {
-    Deal_Status: newStatus
-  };
-
-  if (
-    newStatus === 'Bundled' &&
-    !deal.Bundled_Date
-  ) {
-    updates.Bundled_Date = now_();
-  }
-
-  if (
-    [
-      'Sold',
-      'Destroyed',
-      'Returned'
-    ].includes(newStatus) &&
-    !deal.Expended_Date
-  ) {
-    updates.Expended_Date = now_();
-  }
-
-  updateRecordRow_(
-    'PT_Deals',
-    deal._rowNumber,
-    updates
-  );
-}
-
-
 /**
  * Posts one authoritative inventory transaction.
  */
-function postInventoryTransaction_(data) {
+function buildInventoryTransactionRecord_(data, transactionId, timestamp) {
   const quantityChange = Number(data.quantityChange);
-
   if (!Number.isInteger(quantityChange)) {
-    throw new Error(
-      'Transaction Quantity_Change must be an integer.'
-    );
+    throw new Error('Transaction Quantity_Change must be an integer.');
   }
-
-  const transactionId = generateId_(
-    'TRANSACTION',
-    'TX-',
-    7
-  );
-
-  appendRecord_('Transactions', {
+  return {
     Transaction_ID: transactionId,
-    Effective_Date: data.effectiveDate || now_(),
-    Timestamp: now_(),
+    Effective_Date: data.effectiveDate || timestamp,
+    Timestamp: timestamp,
     Inventory_Type: data.inventoryType,
-    Product_ID: data.productId,
-    Item_ID: data.itemId,
+    Product_ID: data.productId || '',
+    Item_ID: data.itemId || '',
     Form_Number: data.formNumber || '',
     Serial_Number: data.serialNumber || '',
     Transaction_Type: data.transactionType,
@@ -5966,15 +5242,34 @@ function postInventoryTransaction_(data) {
     Source: data.source,
     Reconciliation_ID: data.reconciliationId || '',
     Notes: data.notes || ''
-  });
-
-  if (String(data.inventoryType) === 'Paper' && data.itemId) {
-    adjustPaperCurrentBalance_(data.itemId, quantityChange);
-  }
-
-  return transactionId;
+  };
 }
 
+function postInventoryTransactions_(entries, options = {}) {
+  if (!entries.length) return [];
+  const timestamp = now_();
+  const ids = generateIds_('TRANSACTION', 'TX-', 7, entries.length);
+  const records = entries.map((entry, index) => {
+    return buildInventoryTransactionRecord_(entry, ids[index], timestamp);
+  });
+  appendRecords_('Transactions', records);
+
+  const paperDeltas = new Map();
+  entries.forEach((entry) => {
+    if (String(entry.inventoryType) === 'Paper' && entry.itemId) {
+      const key = String(entry.itemId);
+      paperDeltas.set(key, (paperDeltas.get(key) || 0) + Number(entry.quantityChange));
+    }
+  });
+  if (paperDeltas.size && options.updatePaperBalances !== false) {
+    applyPaperBalanceDeltas_(paperDeltas, options.refreshPaperCatalog !== false);
+  }
+  return ids;
+}
+
+function postInventoryTransaction_(data) {
+  return postInventoryTransactions_([data])[0];
+}
 
 /**
  * Pre-validates a PT stock addition before any records are written.
@@ -6121,37 +5416,6 @@ function validateAnonymousPTStockAddition_(data) {
  * from being partially posted if an unexpected application/API failure occurs
  * after pre-validation succeeds.
  */
-function rollbackNewPTStockRecords_(createdRecords) {
-  if (!createdRecords.length) {
-    return;
-  }
-
-  const transactionIds = new Set(
-    createdRecords
-      .map((record) => record.transactionId)
-      .filter(Boolean)
-  );
-
-  const dealIds = new Set(
-    createdRecords
-      .map((record) => record.dealId)
-      .filter(Boolean)
-  );
-
-  deleteRowsByIdSet_(
-    'Transactions',
-    'Transaction_ID',
-    transactionIds
-  );
-
-  deleteRowsByIdSet_(
-    'PT_Deals',
-    'PT_Deal_ID',
-    dealIds
-  );
-}
-
-
 /**
  * Deletes rows matching IDs created by the currently failing operation.
  * Rows are deleted from bottom to top to avoid row-number shifting.
@@ -6323,119 +5587,6 @@ function createInventoryIssue_(data) {
  * If no anonymous deal remains, the newly discovered identified deal is added
  * to inventory and an Unexpected Deal Inventory Issue is generated.
  */
-function identifyPTDeal_(data) {
-  const serialNumber = normalizeText_(
-    data.serialNumber
-  );
-
-  if (!serialNumber) {
-    throw new Error(
-      'Serial Number is required.'
-    );
-  }
-
-  if (
-    findPTDeal_(
-      data.formNumber,
-      serialNumber
-    )
-  ) {
-    throw new Error(
-      `Deal ${data.formNumber}/${serialNumber} already exists.`
-    );
-  }
-
-  const formNumber = normalizeFormNumber_(
-    data.formNumber
-  );
-
-  const anonymousDeal = getPTDeals_().find((deal) => {
-    return (
-      String(deal.PT_Game_ID) === String(data.gameId) &&
-      normalizeFormNumber_(deal.Form_Number) === formNumber &&
-      !normalizeText_(deal.Serial_Number) &&
-      String(deal.Deal_Status) === 'Unbundled'
-    );
-  });
-
-  if (anonymousDeal) {
-    updateRecordRow_(
-      'PT_Deals',
-      anonymousDeal._rowNumber,
-      {
-        Serial_Number: serialNumber,
-        Deal_Status: data.newStatus || 'Bundled',
-        Bundled_Date: data.effectiveDate || now_()
-      }
-    );
-
-    postInventoryTransaction_({
-      effectiveDate: data.effectiveDate,
-      inventoryType: 'PT',
-      productId: data.gameId,
-      itemId: anonymousDeal.PT_Deal_ID,
-      formNumber: formNumber,
-      serialNumber: serialNumber,
-      transactionType: 'Bundled',
-      quantityChange: 0,
-      unit: 'Deal',
-      source: data.source || 'PT Processing',
-      notes: 'Serial assigned to unidentified deal.'
-    });
-
-    return {
-      dealId: anonymousDeal.PT_Deal_ID,
-      matchedAnonymous: true,
-      issueId: ''
-    };
-  }
-
-  const dealId = createPTDeal_({
-    gameId: data.gameId,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    status: data.newStatus || 'Bundled',
-    receivedDate: data.effectiveDate,
-    notes: data.notes
-  });
-
-  const transactionId = postInventoryTransaction_({
-    effectiveDate: data.effectiveDate,
-    inventoryType: 'PT',
-    productId: data.gameId,
-    itemId: dealId,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    transactionType: 'Adjustment',
-    quantityChange: 1,
-    unit: 'Deal',
-    source: data.source || 'PT Processing',
-    notes: 'Unexpected deal found during PT processing.'
-  });
-
-  const issueId = createInventoryIssue_({
-    inventoryType: 'PT',
-    issueType: 'Unexpected Deal',
-    productId: data.gameId,
-    itemId: dealId,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    expectedQuantity: 0,
-    reportedQuantity: 1,
-    discrepancyAmount: 1,
-    notes:
-      'No unidentified deal was available. ' +
-      `Transaction ${transactionId}.`
-  });
-
-  return {
-    dealId: dealId,
-    matchedAnonymous: false,
-    issueId: issueId
-  };
-}
-
-
 /**
  * Finds one PT deal by its permanent PT_Deal_ID.
  *
@@ -6486,27 +5637,6 @@ function findConflictingPTSerial_(
       normalizeText_(deal.Serial_Number) === normalizedSerialNumber
     );
   }) || null;
-}
-
-
-/**
- * Returns the current pack balance for one Paper_Case_ID.
- *
- * Paper inventory quantity is always derived from Transactions.
- */
-function getPaperCasePackBalance_(paperCaseId) {
-  const normalizedCaseId = normalizeText_(paperCaseId);
-
-  return getRecords_('Transactions')
-    .filter((transaction) => {
-      return (
-        String(transaction.Inventory_Type) === 'Paper' &&
-        String(transaction.Item_ID) === normalizedCaseId
-      );
-    })
-    .reduce((sum, transaction) => {
-      return sum + Number(transaction.Quantity_Change || 0);
-    }, 0);
 }
 
 
@@ -6636,55 +5766,147 @@ function buildPaperBalanceMap_(transactions) {
 
 
 // =============================================================================
-// V1.15 materialized current balances
+// Materialized operational balances
 // =============================================================================
+function ptStatusContribution_(status) {
+  return {
+    unbundled: status === 'Unbundled' ? 1 : 0,
+    bundled: status === 'Bundled' ? 1 : 0,
+    open: status === 'Open' ? 1 : 0,
+    onHand: ['Unbundled', 'Bundled'].includes(String(status)) ? 1 : 0
+  };
+}
+
+function applyPTCatalogBalanceDeltas_(deltasByGameId) {
+  if (!deltasByGameId || !deltasByGameId.size) return;
+  const updatedAt = now_();
+  const updates = getPTCatalog_().filter((row) => {
+    return deltasByGameId.has(String(row.PT_Game_ID));
+  }).map((row) => {
+    const delta = deltasByGameId.get(String(row.PT_Game_ID));
+    return {
+      rowNumber: row._rowNumber,
+      updates: {
+        Qty_Unbundled: Number(row.Qty_Unbundled || 0) + delta.unbundled,
+        Qty_Bundled: Number(row.Qty_Bundled || 0) + delta.bundled,
+        Qty_Open: Number(row.Qty_Open || 0) + delta.open,
+        Qty_On_Hand: Number(row.Qty_On_Hand || 0) + delta.onHand,
+        Balance_Updated_At: updatedAt
+      }
+    };
+  });
+  updateRecordRows_('PT_Catalog', updates);
+}
+
+function recordPTStatusChange_(deltasByGameId, gameId, oldStatus, newStatus) {
+  if (oldStatus === newStatus) return;
+  const before = ptStatusContribution_(oldStatus);
+  const after = ptStatusContribution_(newStatus);
+  const key = String(gameId);
+  const delta = deltasByGameId.get(key) || {unbundled: 0, bundled: 0, open: 0, onHand: 0};
+  Object.keys(delta).forEach((name) => delta[name] += after[name] - before[name]);
+  deltasByGameId.set(key, delta);
+}
+
 function refreshPTCatalogBalances_() {
-  const catalog = getRecords_('PT_Catalog');
   const counts = new Map();
-  getRecords_('PT_Deals').forEach((deal) => {
+  getPTDeals_().forEach((deal) => {
     const id = String(deal.PT_Game_ID);
-    const value = counts.get(id) || {unbundled:0,bundled:0,open:0};
+    const value = counts.get(id) || {unbundled: 0, bundled: 0, open: 0};
     if (deal.Deal_Status === 'Unbundled') value.unbundled += 1;
     if (deal.Deal_Status === 'Bundled') value.bundled += 1;
     if (deal.Deal_Status === 'Open') value.open += 1;
-    counts.set(id,value);
+    counts.set(id, value);
   });
   const updatedAt = now_();
-  updateRecordRows_('PT_Catalog', catalog.map(row => {
-    const value=counts.get(String(row.PT_Game_ID))||{unbundled:0,bundled:0,open:0};
-    return {rowNumber:row._rowNumber,updates:{Qty_Unbundled:value.unbundled,Qty_Bundled:value.bundled,
-      Qty_Open:value.open,Qty_On_Hand:value.unbundled+value.bundled,Balance_Updated_At:updatedAt}};
+  updateRecordRows_('PT_Catalog', getPTCatalog_().map((row) => {
+    const value = counts.get(String(row.PT_Game_ID)) || {unbundled: 0, bundled: 0, open: 0};
+    return {rowNumber: row._rowNumber, updates: {
+      Qty_Unbundled: value.unbundled,
+      Qty_Bundled: value.bundled,
+      Qty_Open: value.open,
+      Qty_On_Hand: value.unbundled + value.bundled,
+      Balance_Updated_At: updatedAt
+    }};
   }));
 }
 
 function refreshPaperCatalogBalances_() {
-  const catalog = getRecords_('Paper_Catalog');
   const totals = new Map();
-  getRecords_('Paper_Cases').forEach(row => totals.set(String(row.Paper_ID),(totals.get(String(row.Paper_ID))||0)+Number(row.Current_Packs||0)));
-  const updatedAt=now_();
-  updateRecordRows_('Paper_Catalog',catalog.map(row=>({rowNumber:row._rowNumber,
-    updates:{Qty_On_Hand:totals.get(String(row.Paper_ID))||0,Balance_Updated_At:updatedAt}})));
+  getPaperCases_().forEach((row) => {
+    const key = String(row.Paper_ID);
+    totals.set(key, (totals.get(key) || 0) + Number(row.Current_Packs || 0));
+  });
+  const updatedAt = now_();
+  updateRecordRows_('Paper_Catalog', getPaperCatalog_().map((row) => ({
+    rowNumber: row._rowNumber,
+    updates: {
+      Qty_On_Hand: totals.get(String(row.Paper_ID)) || 0,
+      Balance_Updated_At: updatedAt
+    }
+  })));
 }
 
-function adjustPaperCurrentBalance_(caseId, delta) {
-  if (!caseId || !delta) return;
-  const paperCase=getRecords_('Paper_Cases').find(row=>String(row.Paper_Case_ID)===String(caseId));
-  if (!paperCase) throw new Error(`Paper case ${caseId} was not found for balance update.`);
-  const quantity=Number(paperCase.Current_Packs||0)+Number(delta);
-  updateRecordRow_('Paper_Cases',paperCase._rowNumber,{Current_Packs:quantity,Balance_Updated_At:now_()});
-  refreshPaperCatalogBalances_();
+function applyPaperBalanceDeltas_(deltasByCaseId, refreshCatalog = true) {
+  if (!deltasByCaseId || !deltasByCaseId.size) return;
+  const updatedAt = now_();
+  const updates = getPaperCases_().filter((row) => {
+    return deltasByCaseId.has(String(row.Paper_Case_ID));
+  }).map((row) => ({
+    rowNumber: row._rowNumber,
+    updates: {
+      Current_Packs: Number(row.Current_Packs || 0) + deltasByCaseId.get(String(row.Paper_Case_ID)),
+      Balance_Updated_At: updatedAt
+    }
+  }));
+  if (updates.length !== deltasByCaseId.size) {
+    throw new Error('One or more Paper cases were not found for a balance update.');
+  }
+  updateRecordRows_('Paper_Cases', updates);
+  if (refreshCatalog) refreshPaperCatalogBalances_();
 }
 
 function initializeCurrentBalancesV115() {
-  const transactions=getRecords_('Transactions');
-  const balances=buildPaperBalanceMap_(transactions);
-  const cases=getRecords_('Paper_Cases');
-  updateRecordRows_('Paper_Cases',cases.map(row=>({rowNumber:row._rowNumber,
-    updates:{Current_Packs:balances.get(String(row.Paper_Case_ID))||0,Balance_Updated_At:now_()}})));
+  const balances = buildPaperBalanceMap_(getRecords_('Transactions'));
+  const cases = getPaperCases_();
+  const updatedAt = now_();
+  updateRecordRows_('Paper_Cases', cases.map((row) => ({
+    rowNumber: row._rowNumber,
+    updates: {
+      Current_Packs: balances.get(String(row.Paper_Case_ID)) || 0,
+      Balance_Updated_At: updatedAt
+    }
+  })));
   refreshPaperCatalogBalances_();
   refreshPTCatalogBalances_();
-  return {ok:true,version:'1.15',paperCases:cases.length};
+  return {ok: true, version: '1.15', paperCases: cases.length};
 }
+
+function validateMaterializedBalances_() {
+  const errors = [];
+  const ledger = buildPaperBalanceMap_(getRecords_('Transactions'));
+  getPaperCases_().forEach((paperCase) => {
+    const expected = ledger.get(String(paperCase.Paper_Case_ID)) || 0;
+    const actual = Number(paperCase.Current_Packs || 0);
+    if (expected !== actual) errors.push(`Paper case ${paperCase.Paper_Case_ID}: ledger ${expected}, current ${actual}.`);
+  });
+  const ptCounts = new Map();
+  getPTDeals_().forEach((deal) => {
+    const key = String(deal.PT_Game_ID);
+    const c = ptCounts.get(key) || {unbundled: 0, bundled: 0, open: 0, onHand: 0};
+    const v = ptStatusContribution_(String(deal.Deal_Status));
+    Object.keys(c).forEach((name) => c[name] += v[name]);
+    ptCounts.set(key, c);
+  });
+  getPTCatalog_().forEach((game) => {
+    const c = ptCounts.get(String(game.PT_Game_ID)) || {unbundled: 0, bundled: 0, open: 0, onHand: 0};
+    [['Qty_Unbundled','unbundled'],['Qty_Bundled','bundled'],['Qty_Open','open'],['Qty_On_Hand','onHand']].forEach(([field,key]) => {
+      if (Number(game[field] || 0) !== c[key]) errors.push(`PT game ${game.PT_Game_ID}.${field}: expected ${c[key]}, found ${game[field] || 0}.`);
+    });
+  });
+  return {valid: errors.length === 0, errors: errors};
+}
+
 /** Shared reconciliation record operations. */
 function createReconciliationRecord_(data) {
   const expected = integerOrThrow_(data.expectedQuantity, 'Expected Quantity');
@@ -6861,6 +6083,14 @@ function resolveInventoryIssue(token, issueId, resolutionNotes) {
     issueId: normalizedIssueId,
     status: 'Resolved'
   };
+}
+
+function resolveInventoryIssueRecord_(issue, resolutionNotes) {
+  updateRecordRow_('Inventory_Issues', issue._rowNumber, {
+    Status: 'Resolved',
+    Resolved_At: now_(),
+    Resolution_Notes: normalizeText_(resolutionNotes)
+  });
 }
 
 
@@ -7948,7 +7178,7 @@ function getPaperCasesForReconciliation(token, paperId) {
         caseId: String(paperCase.Paper_Case_ID),
         serialNumber: normalizeText_(paperCase.Serial_Number),
         recordedStatus: String(paperCase.Case_Status),
-        calculatedPacks: getPaperCasePackBalance_(paperCase.Paper_Case_ID),
+        calculatedPacks: Number(paperCase.Current_Packs || 0),
         notes: normalizeText_(paperCase.Notes)
       };
     })
@@ -8120,7 +7350,7 @@ function reconcileExistingPaperCase_(context) {
   const observedSerial = normalizeText_(observation.serialNumber);
   const recordedStatus = String(existingCase.Case_Status);
   const requestedStatus = normalizeText_(observation.observedStatus);
-  const expectedPacks = getPaperCasePackBalance_(caseId);
+  const expectedPacks = Number(existingCase.Current_Packs || 0);
   const observedPacks = Number(observation.observedPacks);
   const packsPerCase = getPaperPacksPerCase_(context.paperId);
   const observedStatus = derivePaperCaseStatus_(
@@ -8302,7 +7532,8 @@ function reconcileNewlyDiscoveredPaperCase_(context) {
       unit: 'Pack',
       source: 'Inventory Reconciliation',
       reconciliationId: reconciliation.id,
-      notes: notes
+      notes: notes,
+      currentPacks: 0
     });
 
     linkReconciliationTransaction_(
@@ -9707,114 +8938,58 @@ function postSessionProcessingMarker_(
 
 function processSessionPaper_(spreadsheet, context, sourceFile) {
   const sheet = spreadsheet.getSheetByName('WS-01 Paper');
+  if (!sheet) throw new Error('Required worksheet WS-01 Paper is missing.');
+  const requestedRows = PAPER_ROWS_BY_SESSION[context.label];
+  const firstRow = Math.min(...requestedRows);
+  const lastRow = Math.max(...requestedRows);
+  const values = sheet.getRange(firstRow, 2, lastRow - firstRow + 1, 5).getValues();
+  const casesBySerial = new Map(getPaperCases_().filter((row) => normalizeText_(row.Serial_Number)).map((row) => [normalizeText_(row.Serial_Number), row]));
+  const entries = [];
+  const issues = [];
+  const caseUpdates = new Map();
 
-  if (!sheet) {
-    throw new Error('Required worksheet WS-01 Paper is missing.');
-  }
-
-  let transactionCount = 0;
-
-  PAPER_ROWS_BY_SESSION[context.label].forEach((rowNumber) => {
-    const description = normalizeText_(sheet.getRange(rowNumber, 2).getDisplayValue());
-    const serialNumber = normalizeText_(sheet.getRange(rowNumber, 3).getDisplayValue());
-    const quantity = Number(sheet.getRange(rowNumber, 6).getValue() || 0);
-
-    if (!serialNumber && quantity === 0) {
-      return;
-    }
-
-    if (!serialNumber || !Number.isInteger(quantity) || quantity < 0) {
-      throw new Error(
-        `Invalid Paper entry on WS-01 row ${rowNumber}.`
-      );
-    }
-
-    if (quantity === 0) {
-      return;
-    }
-
-    const paperCase = getPaperCases_().find((candidate) => {
-      return normalizeText_(candidate.Serial_Number) === serialNumber;
-    });
-
+  requestedRows.forEach((rowNumber) => {
+    const row = values[rowNumber - firstRow];
+    const description = normalizeText_(row[0]);
+    const serialNumber = normalizeText_(row[1]);
+    const quantity = Number(row[4] || 0);
+    if (!serialNumber && quantity === 0) return;
+    if (!serialNumber || !Number.isInteger(quantity) || quantity < 0) throw new Error(`Invalid Paper entry on WS-01 row ${rowNumber}.`);
+    if (quantity === 0) return;
+    const paperCase = casesBySerial.get(serialNumber);
     if (!paperCase) {
-      createInventoryIssue_({
-        inventoryType: 'Paper',
-        issueType: 'Unknown Serial',
-        productId: '',
-        itemId: '',
-        serialNumber: serialNumber,
-        sessionId: context.sessionId,
-        expectedQuantity: 0,
-        reportedQuantity: quantity,
-        discrepancyAmount: quantity,
-        notes:
-          `WS-01 row ${rowNumber}: ${description}. ` +
-          `Source file ${sourceFile.getId()}.`
-      });
+      issues.push({inventoryType:'Paper', issueType:'Unknown Serial', productId:'', itemId:'', serialNumber:serialNumber,
+        sessionId:context.sessionId, expectedQuantity:0, reportedQuantity:quantity, discrepancyAmount:quantity,
+        notes:`WS-01 row ${rowNumber}: ${description}. Source file ${sourceFile.getId()}.`});
       return;
     }
-
-    const balance = getPaperCasePackBalance_(paperCase.Paper_Case_ID);
-
-    if (quantity > balance) {
-      createInventoryIssue_({
-        inventoryType: 'Paper',
-        issueType: 'Insufficient Inventory',
-        productId: paperCase.Paper_ID,
-        itemId: paperCase.Paper_Case_ID,
-        serialNumber: serialNumber,
-        sessionId: context.sessionId,
-        expectedQuantity: balance,
-        reportedQuantity: quantity,
-        discrepancyAmount: quantity - balance,
-        notes:
-          `Paperwork reports ${quantity} packs used from a ledger balance ` +
-          `of ${balance}. WS-01 row ${rowNumber}.`
-      });
-    }
-
-    postInventoryTransaction_({
-      effectiveDate: context.date,
-      inventoryType: 'Paper',
-      productId: paperCase.Paper_ID,
-      itemId: paperCase.Paper_Case_ID,
-      serialNumber: serialNumber,
-      transactionType: 'Sold',
-      quantityChange: -quantity,
-      unit: 'Pack',
-      sessionId: context.sessionId,
-      source: SESSION_PROCESSING_SOURCE,
-      notes:
-        `${description}; WS-01 row ${rowNumber}; ` +
-        `source file ${sourceFile.getId()}.`
-    });
-
-    const remaining = balance - quantity;
-    const updates = {};
-
-    if (remaining <= 0) {
-      updates.Case_Status = 'Expended';
-      updates.Expended_Date = context.date;
-    } else if (String(paperCase.Case_Status) === 'Unopened') {
-      updates.Case_Status = 'Opened';
-      updates.Opened_Date = context.date;
-    }
-
-    if (Object.keys(updates).length) {
-      updateRecordRow_(
-        'Paper_Cases',
-        paperCase._rowNumber,
-        updates
-      );
-    }
-
-    transactionCount += 1;
+    const previous = caseUpdates.get(String(paperCase.Paper_Case_ID)) || {delta: 0, row: paperCase};
+    const balance = Number(paperCase.Current_Packs || 0) + previous.delta;
+    if (quantity > balance) issues.push({inventoryType:'Paper', issueType:'Insufficient Inventory', productId:paperCase.Paper_ID,
+      itemId:paperCase.Paper_Case_ID, serialNumber:serialNumber, sessionId:context.sessionId, expectedQuantity:balance,
+      reportedQuantity:quantity, discrepancyAmount:quantity-balance,
+      notes:`Paperwork reports ${quantity} packs used from a current balance of ${balance}. WS-01 row ${rowNumber}.`});
+    entries.push({effectiveDate:context.date, inventoryType:'Paper', productId:paperCase.Paper_ID, itemId:paperCase.Paper_Case_ID,
+      serialNumber:serialNumber, transactionType:'Sold', quantityChange:-quantity, unit:'Pack', sessionId:context.sessionId,
+      source:SESSION_PROCESSING_SOURCE, notes:`${description}; WS-01 row ${rowNumber}; source file ${sourceFile.getId()}.`});
+    previous.delta -= quantity;
+    caseUpdates.set(String(paperCase.Paper_Case_ID), previous);
   });
 
-  return transactionCount;
+  issues.forEach(createInventoryIssue_);
+  postInventoryTransactions_(entries, {refreshPaperCatalog:false});
+  const statusUpdates = [];
+  caseUpdates.forEach(({delta, row}) => {
+    const remaining = Number(row.Current_Packs || 0) + delta;
+    const updates = {};
+    if (remaining <= 0) { updates.Case_Status='Expended'; updates.Expended_Date=context.date; }
+    else if (String(row.Case_Status) === 'Unopened') { updates.Case_Status='Opened'; updates.Opened_Date=context.date; }
+    if (Object.keys(updates).length) statusUpdates.push({rowNumber:row._rowNumber, updates:updates});
+  });
+  updateRecordRows_('Paper_Cases', statusUpdates);
+  refreshPaperCatalogBalances_();
+  return entries.length;
 }
-
 
 function processSessionPT_(spreadsheet, context, sourceFile) {
   let transactions = 0;
@@ -10260,10 +9435,10 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       ],
       widths: [125, 110, 155, 105, 105, 125, 135, 135, 145, 120, 85, 150, 205, 155, 260],
       dropdowns: {
-        Inventory_Type: ['PT', 'Paper'],
-        Transaction_Type: ['Initial Inventory', 'Received', 'Bundled', 'Opened', 'Sold', 'Adjustment', 'Returned', 'Destroyed'],
-        Unit: ['Deal', 'Pack'],
-        Source: ['Initialization', 'Session Paperwork Processing', 'Admin Manual'],
+        Inventory_Type: ['PT', 'Paper', 'System'],
+        Transaction_Type: ['Initial Inventory', 'Received', 'Bundled', 'Opened', 'Sold', 'Adjustment', 'Returned', 'Destroyed', 'Session Processing Started', 'Session Processed', 'Session Processing Failed'],
+        Unit: ['Deal', 'Pack', 'Session'],
+        Source: ['Initialization', 'Session Paperwork Processing', 'Inventory Ordering', 'PT Processing', 'Inventory Reconciliation', 'Admin Manual'],
       },
       checkboxes: [],
       integers: ['Quantity_Change'],
@@ -10296,7 +9471,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       widths: [115, 155, 100, 175, 105, 125, 135, 135, 150, 135, 140, 150, 100, 155, 280, 155, 300],
       dropdowns: {
         Inventory_Type: ['PT', 'Paper'],
-        Issue_Type: ['Unknown Serial', 'Insufficient Inventory', 'Paper Type Mismatch', 'Unknown Deal', 'Duplicate Sale', 'Form Mismatch', 'Unavailable Deal'],
+        Issue_Type: ['Unknown Serial', 'Insufficient Inventory', 'Paper Type Mismatch', 'Unknown Deal', 'Duplicate Sale', 'Form Mismatch', 'Unavailable Deal', 'Unexpected Deal'],
         Status: ['Open', 'Resolved', 'Dismissed'],
       },
       checkboxes: [],
@@ -11041,12 +10216,6 @@ FILE: Settings.js
 function getSettingsMap_() {
   const records = getRecords_('Settings');
   return Object.fromEntries(records.filter(r => r.Setting).map(r => [String(r.Setting), r.Value]));
-}
-
-function getSetting_(name, required) {
-  const value = getSettingsMap_()[name];
-  if (required && (value === '' || value == null)) throw new Error(`Missing required setting: ${name}`);
-  return value;
 }
 
 function getPublicAppConfig_() {

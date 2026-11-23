@@ -1512,14 +1512,19 @@ function processCompletedPTDeal_(
     Expended_Session_ID: context.sessionId
   });
 
-  postInventoryTransaction_({
-    effectiveDate: context.date,
-    inventoryType: 'PT',
-    productId: deal.PT_Game_ID,
-    itemId: deal.PT_Deal_ID,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    transactionType: 'Sold',
+    applySinglePTStatusChange_(
+      deal.PT_Game_ID,
+      status,
+      'Sold'
+    );
+    postInventoryTransaction_({
+      effectiveDate: context.date,
+      inventoryType: 'PT',
+      productId: deal.PT_Game_ID,
+      itemId: deal.PT_Deal_ID,
+      formNumber: formNumber,
+      serialNumber: serialNumber,
+      transactionType: 'Sold',
     quantityChange: quantityChange,
     unit: 'Deal',
     sessionId: context.sessionId,
@@ -1606,14 +1611,19 @@ function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
 
   updateRecordRow_('PT_Deals', deal._rowNumber, updates);
 
-  postInventoryTransaction_({
-    effectiveDate: context.date,
-    inventoryType: 'PT',
-    productId: deal.PT_Game_ID,
-    itemId: deal.PT_Deal_ID,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
+    applySinglePTStatusChange_(
+      deal.PT_Game_ID,
+      priorStatus,
+      targetStatus
+    );
+    postInventoryTransaction_({
+      effectiveDate: context.date,
+      inventoryType: 'PT',
+      productId: deal.PT_Game_ID,
+      itemId: deal.PT_Deal_ID,
+      formNumber: formNumber,
+      serialNumber: serialNumber,
+      transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
     quantityChange: quantityChange,
     unit: 'Deal',
     sessionId: context.sessionId,

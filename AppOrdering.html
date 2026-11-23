@@ -532,10 +532,10 @@
       '<option value="">Select paper type...</option>' +
 
       ORDER_CATALOGS.paper
-        .map((option, index) => {
+.map((option) => {
 
           return (
-            `<option value="${index}">` +
+`<option value="${escapeHtml(option.paperId)}">` +
             `${escapeHtml(option.label)}` +
             '</option>'
           );
@@ -577,8 +577,8 @@
 
   function showSelectedPTCaseSize() {
 
-    const selectedIndex =
-      $('order-pt-form').value;
+      const selectedLabel =
+        $('order-pt-form').value.trim();
 
 
     if (!selectedLabel) {
@@ -591,7 +591,7 @@
 
 
     const selected = ORDER_CATALOGS.pt.find((option) => {
-      return option.label === selectedIndex;
+return option.label === selectedLabel;
     });
     if (!selected) {
       $('order-pt-case-size-display').textContent = 'Select a valid game';
@@ -609,8 +609,8 @@
     clearStatus('order-status');
 
 
-    const selectedIndex =
-      $('order-pt-form').value;
+      const selectedLabel =
+        $('order-pt-form').value.trim();
 
 
     if (!selectedLabel) {
@@ -626,7 +626,7 @@
 
 
     const selected = ORDER_CATALOGS.pt.find((option) => {
-      return option.label === selectedIndex;
+return option.label === selectedLabel;
     });
     if (!selected) {
       setStatus(
@@ -690,11 +690,9 @@
 
   function showSelectedPaperCaseSize() {
 
-    const selectedIndex =
-      $('order-paper-type').value;
-
-
-    if (selectedIndex === '') {
+      const selectedPaperId =
+        $('order-paper-type').value;
+      if (!selectedPaperId) {
 
       $('order-paper-case-size-display').textContent =
         'Select a paper type';
@@ -703,10 +701,14 @@
     }
 
 
-    const selected =
-      ORDER_CATALOGS.paper[
-        Number(selectedIndex)
-      ];
+      const selected = ORDER_CATALOGS.paper.find((option) => {
+        return option.paperId === selectedPaperId;
+      });
+      if (!selected) {
+        $('order-paper-case-size-display').textContent =
+          'Select a valid paper type';
+        return;
+      }
 
 
     $('order-paper-case-size-display').textContent =
@@ -719,11 +721,9 @@
     clearStatus('order-status');
 
 
-    const selectedIndex =
-      $('order-paper-type').value;
-
-
-    if (selectedIndex === '') {
+      const selectedPaperId =
+        $('order-paper-type').value;
+      if (!selectedPaperId) {
 
       setStatus(
         'order-status',
@@ -735,10 +735,17 @@
     }
 
 
-    const selected =
-      ORDER_CATALOGS.paper[
-        Number(selectedIndex)
-      ];
+      const selected = ORDER_CATALOGS.paper.find((option) => {
+        return option.paperId === selectedPaperId;
+      });
+      if (!selected) {
+        setStatus(
+          'order-status',
+          'Select a valid paper type.',
+          true
+        );
+        return;
+      }
 
 
     try {
@@ -802,7 +809,7 @@
           });
           ORDER_CATALOGS = await server('getOrderingCatalogs', ADMIN_TOKEN);
           renderOrderingCatalogs();
-          $('order-paper-type').value = result.label;
+$('order-paper-type').value = result.paperId;
           showSelectedPaperCaseSize();
           closeModal('new-paper-modal');
           setStatus('order-status', `${result.shortName} was created and selected.`);
