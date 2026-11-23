@@ -1,0 +1,102 @@
+diff --git a/AppCommon.html b/AppCommon.html
+index 68bc19d..68c3f00 100644
+--- a/AppCommon.html
++++ b/AppCommon.html
+@@ -369,7 +369,7 @@
+       const day = String(date.getDate()).padStart(2, '0');
+       return `${year}-${month}-${day}`;
+     }
+-$1
++  function escapeHtml(value) {
+     return String(value ?? '').replace(
+       /[&<>"']/g,
+       (character) => ({
+diff --git a/AppPTReconciliation.html b/AppPTReconciliation.html
+index 5e36653..33cd1c6 100644
+--- a/AppPTReconciliation.html
++++ b/AppPTReconciliation.html
+@@ -29,10 +29,13 @@
+           Game / Form Number
+         </label>
+ 
+-        <select
++        <input
+           id="pt-form-select"
++          list="pt-form-list"
++          autocomplete="off"
+           onchange="loadSelectedDeals()"
+-        ></select>
++        >
++        <datalist id="pt-form-list"></datalist>
+       </div>
+ 
+       <div>
+@@ -328,7 +331,7 @@
+   async function openPTReconciliation() {
+     showScreen('pt-reconciliation-screen');
+ 
+-    $('recon-date').valueAsDate = new Date();
++    $('recon-date').value = localIsoDate();
+     clearStatus('pt-recon-status');
+ 
+     try {
+@@ -350,14 +353,11 @@
+ 
+ 
+   function renderPTReconciliationOptions() {
+-    populateSelectOptions(
+-      'pt-form-select',
+-      PT_BOOT.forms,
+-      {
+-        labelProperty: 'label',
+-        placeholder: 'Select game/form...'
+-      }
+-    );
++    $('pt-form-list').innerHTML = PT_BOOT.forms
++      .map((form) => {
++        return `<option value="${escapeHtml(form.label)}"></option>`;
++      })
++      .join('');
+ 
+     const uniqueGames = [
+       ...new Map(
+@@ -387,25 +387,35 @@
+ 
+ 
+   function selectedPTForm() {
+-    const selectedIndex = $('pt-form-select').value;
++    const selectedLabel = $('pt-form-select').value.trim();
+ 
+-    if (selectedIndex === '') {
++    if (!selectedLabel) {
+       return null;
+     }
+ 
+-    return PT_BOOT.forms[Number(selectedIndex)];
++    return PT_BOOT.forms.find((form) => {
++      return form.label === selectedLabel;
++    }) || null;
+   }
+ 
+-
+   async function loadSelectedDeals() {
+     const selectedForm = selectedPTForm();
+ 
+     $('deal-rows').innerHTML = '';
+ 
+     if (!selectedForm) {
++      if ($('pt-form-select').value.trim()) {
++        setStatus(
++          'pt-recon-status',
++          'Select a valid game/form from the suggestions.',
++          true
++        );
++      }
+       return;
+     }
+ 
++    clearStatus('pt-recon-status');
++
+     try {
+       const deals = await server(
+         'getPTDealsForForm',
