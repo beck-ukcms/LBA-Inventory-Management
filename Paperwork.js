@@ -1286,21 +1286,23 @@ function processSessionInventoryBeforeArchive_(context) {
 
 
 function getSessionProcessingState_(sessionId) {
-  const markers = getRecords_('Transactions')
-    .filter((transaction) => {
-      return (
+  let state = '';
+  visitTransactionsNewestFirst_(
+    ['Inventory_Type', 'Transaction_Type', 'Session_ID', 'Source'],
+    (transaction) => {
+      if (
         String(transaction.Inventory_Type) === 'System' &&
         String(transaction.Session_ID) === String(sessionId) &&
         String(transaction.Source) === SESSION_PROCESSING_SOURCE &&
-        SESSION_MARKER_TYPES.includes(
-          String(transaction.Transaction_Type)
-        )
-      );
-    });
-
-  return markers.length
-    ? String(markers[markers.length - 1].Transaction_Type)
-    : '';
+        SESSION_MARKER_TYPES.includes(String(transaction.Transaction_Type))
+      ) {
+        state = String(transaction.Transaction_Type);
+        return true;
+      }
+      return false;
+    }
+  );
+  return state;
 }
 
 
@@ -1367,8 +1369,8 @@ function processSessionPaper_(spreadsheet, context, sourceFile) {
     caseUpdates.set(String(paperCase.Paper_Case_ID), previous);
   });
 
-  issues.forEach(createInventoryIssue_);
-  postInventoryTransactions_(entries, {refreshPaperCatalog:false});
+  createInventoryIssues_(issues);
+  postInventoryTransactions_(entries);
   const statusUpdates = [];
   caseUpdates.forEach(({delta, row}) => {
     const remaining = Number(row.Current_Packs || 0) + delta;
@@ -1378,7 +1380,6 @@ function processSessionPaper_(spreadsheet, context, sourceFile) {
     if (Object.keys(updates).length) statusUpdates.push({rowNumber:row._rowNumber, updates:updates});
   });
   updateRecordRows_('Paper_Cases', statusUpdates);
-  refreshPaperCatalogBalances_();
   return entries.length;
 }
 
@@ -1509,10 +1510,10 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
       sessionId: context.sessionId, source: SESSION_PROCESSING_SOURCE, notes: notes
     });
   });
+  createInventoryIssues_(issues);
   updateRecordRows_('PT_Deals', dealUpdates);
   applyPTCatalogBalanceDeltas_(balanceDeltas);
   postInventoryTransactions_(transactions);
-  createInventoryIssues_(issues);
   return {transactions: transactions.length, issues: issues.length};
 }
 

@@ -20,8 +20,7 @@
     <h3>Create One Session Manually</h3>
 
     <p>
-      Creates one Sessions entry if needed, processes outstanding past
-      paperwork, and creates exactly one paperwork set.
+      Creates one Sessions entry if needed and exactly one paperwork set.
     </p>
 
     <div class="form-grid">
@@ -288,6 +287,7 @@
     try {
       const data = await server(
         'createManualSingleDatePaperwork',
+        ADMIN_TOKEN,
         date,
         label
       );

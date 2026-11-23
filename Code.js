@@ -472,6 +472,42 @@ function updateRecordRows_(sheetName, rowUpdates) {
   invalidateRecordCache_(sheetName);
 }
 
+
+/**
+ * Reads selected Transaction columns from newest to oldest in bounded chunks.
+ * The visitor returns true when enough history has been collected.
+ */
+function visitTransactionsNewestFirst_(columnNames, visitor, chunkSize = 500) {
+  const sheet = getSheetOrThrow_('Transactions');
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const headerMap = getHeaderMap_(sheet);
+  const columns = columnNames.map((name) => {
+    if (!(name in headerMap)) throw new Error(`Unknown Transactions column: ${name}`);
+    return headerMap[name] + 1;
+  });
+  const firstColumn = Math.min(...columns);
+  const lastColumn = Math.max(...columns);
+  for (let endRow = lastRow; endRow >= 2;) {
+    const startRow = Math.max(2, endRow - chunkSize + 1);
+    const values = sheet.getRange(
+      startRow,
+      firstColumn,
+      endRow - startRow + 1,
+      lastColumn - firstColumn + 1
+    ).getValues();
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+      const source = values[index];
+      const record = {};
+      columnNames.forEach((name, columnIndex) => {
+        record[name] = source[columns[columnIndex] - firstColumn];
+      });
+      if (visitor(record, startRow + index) === true) return;
+    }
+    endRow = startRow - 1;
+  }
+}
+
 /**
  * Generates a persistent unique application ID.
  *
