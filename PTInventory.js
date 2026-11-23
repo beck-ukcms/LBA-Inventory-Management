@@ -146,11 +146,6 @@ function bundleExistingIdentifiedPTDeal_(context) {
         status,
         'Bundled'
       );
-    applySinglePTStatusChange_(
-      context.game.PT_Game_ID,
-      '',
-      'Bundled'
-    );
     const adjustmentTransactionId = postInventoryTransaction_({
       effectiveDate: now_(),
       inventoryType: 'PT',
@@ -246,6 +241,11 @@ function bundleNewlyIdentifiedPTDeal_(context) {
     receivedDate: now_(),
     notes: 'Unexpected deal found and bundled through integrated PT Processing.'
   });
+  applySinglePTStatusChange_(
+    context.game.PT_Game_ID,
+    '',
+    'Bundled'
+  );
 
   const adjustmentTransactionId = postInventoryTransaction_({
     effectiveDate: now_(),
@@ -437,16 +437,16 @@ function savePTReconciliation(token, payload) {
     ? new Date(`${payload.effectiveDate}T12:00:00`)
     : now_();
 
-  validatePTReconciliationObservations_(
-    gameId,
-    formNumber,
-    observations
-  );
 
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000);
 
   try {
+      validatePTReconciliationObservations_(
+        gameId,
+        formNumber,
+        observations
+      );
     const results = observations.map((observation) => {
       const dealId = normalizeText_(observation.dealId);
 
@@ -630,11 +630,6 @@ function reconcileExistingPTDeal_(context) {
     reconciliationNote
   );
 
-    applySinglePTStatusChange_(
-      context.gameId,
-      '',
-      observedStatus
-    );
     const reconciliation = createReconciliationRecord_({
       inventoryType: 'PT',
       productId: context.gameId,
@@ -750,6 +745,11 @@ function reconcileNewlyDiscoveredPTDeal_(context) {
     receivedDate: context.effectiveDate,
     notes: notes
   });
+  applySinglePTStatusChange_(
+    context.gameId,
+    '',
+    observedStatus
+  );
 
   const reconciliation = createReconciliationRecord_({
     inventoryType: 'PT',

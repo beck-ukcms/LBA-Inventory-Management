@@ -1,5 +1,5 @@
 ================================================================
-GIT COMMIT: 6f40effcafe02e65f2587574cb0a5bf9b746766e
+GIT COMMIT: f077088b606f45b749b7bae0ffab3feda09ef532
 ================================================================
 
 ================================================================
@@ -575,6 +575,25 @@ FILE: AppCommon.html
 
   function closeModal(modalId) {
     $(modalId).classList.remove('show');
+  }
+
+  async function withBusyButton(buttonOrId, action) {
+      const button = typeof buttonOrId === 'string'
+        ? $(buttonOrId)
+        : buttonOrId;
+      if (typeof action !== 'function') {
+        throw new Error('A busy-button action is required.');
+      }
+      if (!button) {
+        return action();
+      }
+      const wasDisabled = button.disabled;
+      button.disabled = true;
+      try {
+        return await action();
+      } finally {
+        button.disabled = wasDisabled;
+      }
   }
 
 function localIsoDate(date = new Date()) {
@@ -1572,10 +1591,10 @@ FILE: AppOrdering.html
       '<option value="">Select paper type...</option>' +
 
       ORDER_CATALOGS.paper
-        .map((option, index) => {
+.map((option) => {
 
           return (
-            `<option value="${index}">` +
+`<option value="${escapeHtml(option.paperId)}">` +
             `${escapeHtml(option.label)}` +
             '</option>'
           );
@@ -1617,8 +1636,8 @@ FILE: AppOrdering.html
 
   function showSelectedPTCaseSize() {
 
-    const selectedIndex =
-      $('order-pt-form').value;
+      const selectedLabel =
+        $('order-pt-form').value.trim();
 
 
     if (!selectedLabel) {
@@ -1631,7 +1650,7 @@ FILE: AppOrdering.html
 
 
     const selected = ORDER_CATALOGS.pt.find((option) => {
-      return option.label === selectedIndex;
+return option.label === selectedLabel;
     });
     if (!selected) {
       $('order-pt-case-size-display').textContent = 'Select a valid game';
@@ -1649,8 +1668,8 @@ FILE: AppOrdering.html
     clearStatus('order-status');
 
 
-    const selectedIndex =
-      $('order-pt-form').value;
+      const selectedLabel =
+        $('order-pt-form').value.trim();
 
 
     if (!selectedLabel) {
@@ -1666,7 +1685,7 @@ FILE: AppOrdering.html
 
 
     const selected = ORDER_CATALOGS.pt.find((option) => {
-      return option.label === selectedIndex;
+return option.label === selectedLabel;
     });
     if (!selected) {
       setStatus(
@@ -1730,11 +1749,9 @@ FILE: AppOrdering.html
 
   function showSelectedPaperCaseSize() {
 
-    const selectedIndex =
-      $('order-paper-type').value;
-
-
-    if (selectedIndex === '') {
+      const selectedPaperId =
+        $('order-paper-type').value;
+      if (!selectedPaperId) {
 
       $('order-paper-case-size-display').textContent =
         'Select a paper type';
@@ -1743,10 +1760,14 @@ FILE: AppOrdering.html
     }
 
 
-    const selected =
-      ORDER_CATALOGS.paper[
-        Number(selectedIndex)
-      ];
+      const selected = ORDER_CATALOGS.paper.find((option) => {
+        return option.paperId === selectedPaperId;
+      });
+      if (!selected) {
+        $('order-paper-case-size-display').textContent =
+          'Select a valid paper type';
+        return;
+      }
 
 
     $('order-paper-case-size-display').textContent =
@@ -1759,11 +1780,9 @@ FILE: AppOrdering.html
     clearStatus('order-status');
 
 
-    const selectedIndex =
-      $('order-paper-type').value;
-
-
-    if (selectedIndex === '') {
+      const selectedPaperId =
+        $('order-paper-type').value;
+      if (!selectedPaperId) {
 
       setStatus(
         'order-status',
@@ -1775,10 +1794,17 @@ FILE: AppOrdering.html
     }
 
 
-    const selected =
-      ORDER_CATALOGS.paper[
-        Number(selectedIndex)
-      ];
+      const selected = ORDER_CATALOGS.paper.find((option) => {
+        return option.paperId === selectedPaperId;
+      });
+      if (!selected) {
+        setStatus(
+          'order-status',
+          'Select a valid paper type.',
+          true
+        );
+        return;
+      }
 
 
     try {
@@ -1842,7 +1868,7 @@ FILE: AppOrdering.html
           });
           ORDER_CATALOGS = await server('getOrderingCatalogs', ADMIN_TOKEN);
           renderOrderingCatalogs();
-          $('order-paper-type').value = result.label;
+$('order-paper-type').value = result.paperId;
           showSelectedPaperCaseSize();
           closeModal('new-paper-modal');
           setStatus('order-status', `${result.shortName} was created and selected.`);
@@ -4534,20 +4560,26 @@ function resizeNativeTable_(
   updatedTable.range.endRowIndex =
     newEndRowIndex;
 
-  Sheets.Spreadsheets.batchUpdate(
-    {
-      requests: [
-        {
-          updateTable: {
-            table: updatedTable,
-            fields: 'range'
+    Sheets.Spreadsheets.batchUpdate(
+      {
+        requests: [
+          {
+            updateTable: {
+              table: updatedTable,
+              fields: 'range'
+            }
           }
-        }
-      ]
-    },
-    spreadsheet.getId()
-  );
-}
+        ]
+      },
+      spreadsheet.getId()
+    );
+    if (EXECUTION_NATIVE_TABLE_CACHE_) {
+      EXECUTION_NATIVE_TABLE_CACHE_.set(
+        String(updatedTable.range.sheetId),
+        JSON.parse(JSON.stringify(updatedTable))
+      );
+    }
+  }
 
 
 /**
@@ -5808,7 +5840,17 @@ function recordPTStatusChange_(deltasByGameId, gameId, oldStatus, newStatus) {
   deltasByGameId.set(key, delta);
 }
 
-function refreshPTCatalogBalances_() {
+  function applySinglePTStatusChange_(gameId, oldStatus, newStatus) {
+    const deltasByGameId = new Map();
+    recordPTStatusChange_(
+      deltasByGameId,
+      gameId,
+      String(oldStatus || ''),
+      String(newStatus || '')
+    );
+    applyPTCatalogBalanceDeltas_(deltasByGameId);
+  }
+  function refreshPTCatalogBalances_() {
   const counts = new Map();
   getPTDeals_().forEach((deal) => {
     const id = String(deal.PT_Game_ID);
@@ -6374,10 +6416,14 @@ function bundleExistingIdentifiedPTDeal_(context) {
         deal.Notes,
         'Bundled through integrated PT Processing.'
       )
-    });
-
-    const bundledTransactionId = postPTBundledTransaction_(
-      deal.PT_Deal_ID,
+      });
+      applySinglePTStatusChange_(
+        deal.PT_Game_ID,
+        status,
+        'Bundled'
+      );
+      const bundledTransactionId = postPTBundledTransaction_(
+        deal.PT_Deal_ID,
       context.game.PT_Game_ID,
       context.formNumber,
       context.serialNumber,
@@ -6402,8 +6448,17 @@ function bundleExistingIdentifiedPTDeal_(context) {
         deal.Notes,
         'Missing deal recovered and bundled through integrated PT Processing.'
       )
-    });
-
+      });
+      applySinglePTStatusChange_(
+        deal.PT_Game_ID,
+        status,
+        'Bundled'
+      );
+    applySinglePTStatusChange_(
+      context.game.PT_Game_ID,
+      '',
+      'Bundled'
+    );
     const adjustmentTransactionId = postInventoryTransaction_({
       effectiveDate: now_(),
       inventoryType: 'PT',
@@ -6467,10 +6522,14 @@ function bundleNewlyIdentifiedPTDeal_(context) {
         anonymousDeal.Notes,
         'Serial assigned and deal bundled through integrated PT Processing.'
       )
-    });
-
-    const bundledTransactionId = postPTBundledTransaction_(
-      anonymousDeal.PT_Deal_ID,
+      });
+      applySinglePTStatusChange_(
+        anonymousDeal.PT_Game_ID,
+        'Unbundled',
+        'Bundled'
+      );
+      const bundledTransactionId = postPTBundledTransaction_(
+        anonymousDeal.PT_Deal_ID,
       context.game.PT_Game_ID,
       context.formNumber,
       context.serialNumber,
@@ -6588,10 +6647,7 @@ function resolveOpenPTIssuesForDeal_(deal, resolutionNote) {
       );
     })
     .forEach((issue) => {
-      updateRecordRow_('Inventory_Issues', issue._rowNumber, {
-        Status: 'Resolved',
-        Notes: appendInventoryNote_(issue.Notes, resolutionNote)
-      });
+        resolveInventoryIssueRecord_(issue, resolutionNote);
 
       resolvedIssueIds.push(String(issue.Issue_ID));
     });
@@ -6882,9 +6938,14 @@ function reconcileExistingPTDeal_(context) {
     reconciliationNote
   );
 
-  const reconciliation = createReconciliationRecord_({
-    inventoryType: 'PT',
-    productId: context.gameId,
+    applySinglePTStatusChange_(
+      context.gameId,
+      '',
+      observedStatus
+    );
+    const reconciliation = createReconciliationRecord_({
+      inventoryType: 'PT',
+      productId: context.gameId,
     itemId: dealId,
     formNumber: context.formNumber,
     serialNumber: observedSerial,
@@ -6933,9 +6994,15 @@ function reconcileExistingPTDeal_(context) {
     rowUpdates
   );
 
-  let transactionId = '';
-
-  if (reconciliation.correction !== 0) {
+    if (statusChanged) {
+      applySinglePTStatusChange_(
+        existingDeal.PT_Game_ID,
+        recordedStatus,
+        observedStatus
+      );
+    }
+    let transactionId = '';
+    if (reconciliation.correction !== 0) {
     transactionId = postInventoryTransaction_({
       effectiveDate: context.effectiveDate,
       inventoryType: 'PT',
@@ -9109,14 +9176,19 @@ function processCompletedPTDeal_(
     Expended_Session_ID: context.sessionId
   });
 
-  postInventoryTransaction_({
-    effectiveDate: context.date,
-    inventoryType: 'PT',
-    productId: deal.PT_Game_ID,
-    itemId: deal.PT_Deal_ID,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    transactionType: 'Sold',
+    applySinglePTStatusChange_(
+      deal.PT_Game_ID,
+      status,
+      'Sold'
+    );
+    postInventoryTransaction_({
+      effectiveDate: context.date,
+      inventoryType: 'PT',
+      productId: deal.PT_Game_ID,
+      itemId: deal.PT_Deal_ID,
+      formNumber: formNumber,
+      serialNumber: serialNumber,
+      transactionType: 'Sold',
     quantityChange: quantityChange,
     unit: 'Deal',
     sessionId: context.sessionId,
@@ -9203,14 +9275,19 @@ function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
 
   updateRecordRow_('PT_Deals', deal._rowNumber, updates);
 
-  postInventoryTransaction_({
-    effectiveDate: context.date,
-    inventoryType: 'PT',
-    productId: deal.PT_Game_ID,
-    itemId: deal.PT_Deal_ID,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
+    applySinglePTStatusChange_(
+      deal.PT_Game_ID,
+      priorStatus,
+      targetStatus
+    );
+    postInventoryTransaction_({
+      effectiveDate: context.date,
+      inventoryType: 'PT',
+      productId: deal.PT_Game_ID,
+      itemId: deal.PT_Deal_ID,
+      formNumber: formNumber,
+      serialNumber: serialNumber,
+      transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
     quantityChange: quantityChange,
     unit: 'Deal',
     sessionId: context.sessionId,

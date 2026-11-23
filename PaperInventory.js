@@ -139,15 +139,15 @@ function savePaperReconciliation(token, payload) {
     ? new Date(`${payload.effectiveDate}T12:00:00`)
     : now_();
 
-  validatePaperReconciliationObservations_(
-    paperId,
-    observations
-  );
 
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000);
 
   try {
+      validatePaperReconciliationObservations_(
+        paperId,
+        observations
+      );
     const results = observations.map((observation) => {
       if (normalizeText_(observation.caseId)) {
         return reconcileExistingPaperCase_({
