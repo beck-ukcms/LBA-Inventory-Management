@@ -4,12 +4,6 @@ function getSettingsMap_() {
   return Object.fromEntries(records.filter(r => r.Setting).map(r => [String(r.Setting), r.Value]));
 }
 
-function getSetting_(name, required) {
-  const value = getSettingsMap_()[name];
-  if (required && (value === '' || value == null)) throw new Error(`Missing required setting: ${name}`);
-  return value;
-}
-
 function getPublicAppConfig_() {
   const s = getSettingsMap_();
   return {

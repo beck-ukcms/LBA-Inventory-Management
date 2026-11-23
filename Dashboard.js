@@ -5,57 +5,39 @@ const DASHBOARD_SESSIONS_PER_WEEK = 3;
 function getDashboardData() {
   const games = getPTCatalog_().filter(isActiveCatalogRecord_);
   const papers = getPaperCatalog_().filter(isActiveCatalogRecord_);
-  const deals = getPTDeals_();
-  const cases = getPaperCases_();
   const transactions = getRecords_('Transactions');
   const recentSessionIds = getRecentProcessedSessionIds_(transactions);
   const recentSet = new Set(recentSessionIds);
-
-  const pt = games.map((game) => {
-    const gameDeals = deals.filter((deal) => String(deal.PT_Game_ID) === String(game.PT_Game_ID));
-    const sold = transactions.filter((transaction) => {
-      return String(transaction.Inventory_Type) === 'PT' &&
-        String(transaction.Product_ID) === String(game.PT_Game_ID) &&
-        String(transaction.Transaction_Type) === 'Sold' &&
-        recentSet.has(String(transaction.Session_ID));
-    }).length;
-    return {
-      gameId: String(game.PT_Game_ID),
-      formNumber: normalizeFormNumber_(game.Primary_Form_Number),
-      label: `${game.Game_Name} (${normalizeFormNumber_(game.Primary_Form_Number)})`,
-      onHand: gameDeals.filter((deal) => ['Unbundled', 'Bundled'].includes(String(deal.Deal_Status))).length,
-      targetOnHand: Number(game.Target_On_Hand || 0),
-      bundled: gameDeals.filter((deal) => String(deal.Deal_Status) === 'Bundled').length,
-      targetBundled: Number(game.Target_Bundled || 0),
-      soldPerWeek: recentSessionIds.length ? sold / recentSessionIds.length * DASHBOARD_SESSIONS_PER_WEEK : 0,
-      netProfitPerDollar: Number(game.Net_Income_Per_Patron_Dollar || 0)
-    };
-  }).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
-
-  const paper = papers.map((catalogRow) => {
-    const productCases = cases.filter((paperCase) => String(paperCase.Paper_ID) === String(catalogRow.Paper_ID));
-    const caseIds = new Set(productCases.map((paperCase) => String(paperCase.Paper_Case_ID)));
-    const packsOnHand = transactions.filter((transaction) => {
-      return String(transaction.Inventory_Type) === 'Paper' && caseIds.has(String(transaction.Item_ID));
-    }).reduce((sum, transaction) => sum + Number(transaction.Quantity_Change || 0), 0);
-    const soldPacks = -transactions.filter((transaction) => {
-      return String(transaction.Inventory_Type) === 'Paper' &&
-        String(transaction.Product_ID) === String(catalogRow.Paper_ID) &&
-        String(transaction.Transaction_Type) === 'Sold' &&
-        recentSet.has(String(transaction.Session_ID));
-    }).reduce((sum, transaction) => sum + Number(transaction.Quantity_Change || 0), 0);
-    return {
-      paperId: String(catalogRow.Paper_ID),
-      label: `${catalogRow.Short_Name} - ${catalogRow.Description}`,
-      packsOnHand: packsOnHand,
-      targetOnHand: Number(catalogRow.Target_On_Hand || 0),
-      soldPerWeek: recentSessionIds.length ? soldPacks / recentSessionIds.length * DASHBOARD_SESSIONS_PER_WEEK : 0,
-      netProfitPerDollar: Number(catalogRow.Net_Income_Per_Patron_Dollar || 0),
-      packsPerCase: Number(catalogRow.Packs_Per_Case || 0)
-    };
-  }).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
-
-  return { pt, paper, sessionCount: recentSessionIds.length };
+  const ptSold = new Map();
+  const paperSold = new Map();
+  transactions.forEach((transaction) => {
+    if (String(transaction.Transaction_Type) !== 'Sold' || !recentSet.has(String(transaction.Session_ID))) return;
+    const key = String(transaction.Product_ID);
+    if (String(transaction.Inventory_Type) === 'PT') ptSold.set(key, (ptSold.get(key) || 0) + 1);
+    if (String(transaction.Inventory_Type) === 'Paper') paperSold.set(key, (paperSold.get(key) || 0) - Number(transaction.Quantity_Change || 0));
+  });
+  const divisor = recentSessionIds.length || 0;
+  const pt = games.map((game) => ({
+    gameId: String(game.PT_Game_ID),
+    formNumber: normalizeFormNumber_(game.Primary_Form_Number),
+    label: `${game.Game_Name} (${normalizeFormNumber_(game.Primary_Form_Number)})`,
+    onHand: Number(game.Qty_On_Hand || 0),
+    targetOnHand: Number(game.Target_On_Hand || 0),
+    bundled: Number(game.Qty_Bundled || 0),
+    targetBundled: Number(game.Target_Bundled || 0),
+    soldPerWeek: divisor ? (ptSold.get(String(game.PT_Game_ID)) || 0) / divisor * DASHBOARD_SESSIONS_PER_WEEK : 0,
+    netProfitPerDollar: Number(game.Net_Income_Per_Patron_Dollar || 0)
+  })).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
+  const paper = papers.map((row) => ({
+    paperId: String(row.Paper_ID),
+    label: `${row.Short_Name} - ${row.Description}`,
+    packsOnHand: Number(row.Qty_On_Hand || 0),
+    targetOnHand: Number(row.Target_On_Hand || 0),
+    soldPerWeek: divisor ? (paperSold.get(String(row.Paper_ID)) || 0) / divisor * DASHBOARD_SESSIONS_PER_WEEK : 0,
+    netProfitPerDollar: Number(row.Net_Income_Per_Patron_Dollar || 0),
+    packsPerCase: Number(row.Packs_Per_Case || 0)
+  })).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
+  return {pt, paper, sessionCount: recentSessionIds.length};
 }
 
 function isActiveCatalogRecord_(record) {

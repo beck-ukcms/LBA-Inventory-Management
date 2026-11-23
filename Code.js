@@ -154,6 +154,7 @@ function getHeaderMap_(sheet) {
  * @return {Object[]}
  */
 const EXECUTION_RECORD_CACHE_ = Object.create(null);
+let EXECUTION_NATIVE_TABLE_CACHE_ = null;
 function invalidateRecordCache_(sheetName) {
   delete EXECUTION_RECORD_CACHE_[sheetName];
 }
@@ -311,113 +312,24 @@ function getRecords_(sheetName) {
  * @return {Object|null}
  */
 function getNativeTableForSheet_(sheet) {
-
-  const spreadsheet = getInventorySpreadsheet_();
-
-  const apiSpreadsheet = Sheets.Spreadsheets.get(
-    spreadsheet.getId(),
-    {
-      includeGridData: false
-    }
-  );
-
-  const apiSheet =
-    (apiSpreadsheet.sheets || [])
-      .find(
-        (candidate) => {
-
-          return (
-            candidate.properties.sheetId ===
-            sheet.getSheetId()
-          );
-        }
-      );
-
-  if (
-    !apiSheet ||
-    !(apiSheet.tables || []).length
-  ) {
-
-    return null;
-  }
-
-  return apiSheet.tables[0];
-}
-
-
-/**
- * Finds the first blank permanent-ID row inside a native Table.
- *
- * If the Table contains no empty data row, the Table is expanded by twenty
- * rows and the first newly available row is returned.
- *
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
- * @param {Object} table
- * @return {number}
- */
-function findFirstEmptyTableRow_(sheet, table) {
-
-  /*
-   * GridRange indices are zero-based and endRowIndex is exclusive.
-   * The worksheet's first data row is one row below the Table header.
-   */
-  const firstDataRow =
-    table.range.startRowIndex + 2;
-
-  const lastTableWorksheetRow =
-    table.range.endRowIndex;
-
-  const availableRows =
-    lastTableWorksheetRow -
-    firstDataRow +
-    1;
-
-  if (availableRows > 0) {
-
-    const primaryIds = sheet
-      .getRange(
-        firstDataRow,
-        1,
-        availableRows,
-        1
-      )
-      .getDisplayValues();
-
-    const emptyOffset = primaryIds.findIndex(
-      (row) => {
-
-        return normalizeText_(row[0]) === '';
-      }
+  if (!EXECUTION_NATIVE_TABLE_CACHE_) {
+    const spreadsheet = getInventorySpreadsheet_();
+    const response = Sheets.Spreadsheets.get(
+      spreadsheet.getId(),
+      { includeGridData: false }
     );
-
-    if (emptyOffset >= 0) {
-
-      return firstDataRow + emptyOffset;
-    }
+    EXECUTION_NATIVE_TABLE_CACHE_ = new Map();
+    (response.sheets || []).forEach((apiSheet) => {
+      const table = (apiSheet.tables || [])[0] || null;
+      EXECUTION_NATIVE_TABLE_CACHE_.set(
+        String(apiSheet.properties.sheetId),
+        table
+      );
+    });
   }
-
-  const expansionRows = 20;
-
-  const firstNewWorksheetRow =
-    lastTableWorksheetRow + 1;
-
-  const expandedLastWorksheetRow =
-    lastTableWorksheetRow +
-    expansionRows;
-
-  ensureSheetRowCapacity_(
-    sheet,
-    expandedLastWorksheetRow
-  );
-
-  resizeNativeTable_(
-    table,
-    expandedLastWorksheetRow
-  );
-
-  return firstNewWorksheetRow;
+  const table = EXECUTION_NATIVE_TABLE_CACHE_.get(String(sheet.getSheetId()));
+  return table ? JSON.parse(JSON.stringify(table)) : null;
 }
-
 
 /**
  * Changes only the ending row of a native Google Sheets Table.
@@ -479,228 +391,67 @@ function ensureSheetRowCapacity_(
 }
 
 /**
- * Converts a positive column number into its A1 column letters.
- *
- * Examples:
- *
- *   1  -> A
- *   21 -> U
- *   27 -> AA
- *
- * @param {number} columnNumber
- * @return {string}
- */
-function columnNumberToLetter_(columnNumber) {
-
-  let number = Number(columnNumber);
-
-  if (
-    !Number.isInteger(number) ||
-    number < 1
-  ) {
-
-    throw new Error(
-      `Invalid column number: ${columnNumber}`
-    );
-  }
-
-  let columnLetters = '';
-
-  while (number > 0) {
-
-    const remainder =
-      (number - 1) % 26;
-
-    columnLetters =
-      String.fromCharCode(
-        65 + remainder
-      ) +
-      columnLetters;
-
-    number =
-      Math.floor(
-        (number - 1) / 26
-      );
-  }
-
-  return columnLetters;
-}
-
-
-/**
- * Extracts the first worksheet row number from an A1 range.
- *
- * Examples:
- *
- *   PT_Catalog!A21:U21 -> 21
- *   'PT Catalog'!A5:U5 -> 5
- *
- * @param {string} a1Range
- * @return {number|null}
- */
-function extractFirstRowNumberFromA1_(a1Range) {
-
-  if (!a1Range) {
-
-    return null;
-  }
-
-  const cellRange =
-    String(a1Range)
-      .split('!')
-      .pop();
-
-  const firstCell =
-    cellRange
-      .split(':')[0];
-
-  const match =
-    firstCell.match(
-      /(\d+)$/
-    );
-
-  if (!match) {
-
-    return null;
-  }
-
-  return Number(
-    match[1]
-  );
-}
-
-
-/**
  * Updates specific fields on an existing record row.
  *
  * @param {string} sheetName
  * @param {number} rowNumber
  * @param {Object} updates
  */
-function updateRecordRow_(
-  sheetName,
-  rowNumber,
-  updates
-) {
-
-  const sheet =
-    getSheetOrThrow_(sheetName);
-
-  const headerMap =
-    getHeaderMap_(sheet);
-
-
-  Object.entries(updates).forEach(
-    ([header, value]) => {
-
-      if (!(header in headerMap)) {
-
-        throw new Error(
-          `Unknown ${sheetName} column: ${header}`
-        );
-      }
-
-
-      sheet
-        .getRange(
-          rowNumber,
-          headerMap[header] + 1
-        )
-        .setValue(value);
-    }
-  );
-  invalidateRecordCache_(sheetName);
+function updateRecordRow_(sheetName, rowNumber, updates) {
+  updateRecordRows_(sheetName, [
+    { rowNumber: rowNumber, updates: updates }
+  ]);
 }
 
-
 /**
- * Updates multiple existing record rows.
- *
- * Each item must contain:
- *
- *   {
- *     rowNumber: 12,
- *     updates: {
- *       Current_Packs: 24,
- *       Balance_Updated_At: new Date()
- *     }
- *   }
- *
- * Values for adjacent columns are written together. This avoids the
- * cell-by-cell writes performed by updateRecordRow_() while preserving
- * columns that are not part of the requested update.
- *
- * @param {string} sheetName
- * @param {Object[]} rowUpdates
+ * Applies sparse row updates through one rectangular read and one write.
  */
 function updateRecordRows_(sheetName, rowUpdates) {
   const updatesToApply = Array.isArray(rowUpdates)
     ? rowUpdates.filter((item) => {
-        return (
-          item &&
-          Number.isInteger(Number(item.rowNumber)) &&
-          Number(item.rowNumber) >= 2 &&
-          item.updates &&
-          Object.keys(item.updates).length > 0
-        );
+        return item && Number(item.rowNumber) >= 2 && item.updates &&
+          Object.keys(item.updates).length;
       })
     : [];
-
-  if (!updatesToApply.length) {
-    return;
-  }
+  if (!updatesToApply.length) return;
 
   const sheet = getSheetOrThrow_(sheetName);
   const headerMap = getHeaderMap_(sheet);
+  const rowsByNumber = new Map();
+  let minRow = Infinity;
+  let maxRow = 0;
+  let minColumn = Infinity;
+  let maxColumn = 0;
 
   updatesToApply.forEach((item) => {
-    const entries = Object.entries(item.updates)
-      .map(([header, value]) => {
-        if (!(header in headerMap)) {
-          throw new Error(`Unknown ${sheetName} column: ${header}`);
-        }
-
-        return {
-          column: headerMap[header] + 1,
-          value: value
-        };
-      })
-      .sort((first, second) => first.column - second.column);
-
-    let group = [];
-
-    const writeGroup = () => {
-      if (!group.length) {
-        return;
+    const rowNumber = Number(item.rowNumber);
+    const merged = rowsByNumber.get(rowNumber) || {};
+    Object.entries(item.updates).forEach(([header, value]) => {
+      if (!(header in headerMap)) {
+        throw new Error(`Unknown ${sheetName} column: ${header}`);
       }
-
-      sheet
-        .getRange(
-          Number(item.rowNumber),
-          group[0].column,
-          1,
-          group.length
-        )
-        .setValues([
-          group.map((entry) => entry.value)
-        ]);
-
-      group = [];
-    };
-
-    entries.forEach((entry) => {
-      if (
-        group.length &&
-        entry.column !== group[group.length - 1].column + 1
-      ) {
-        writeGroup();
-      }
-
-      group.push(entry);
+      merged[header] = value;
+      const column = headerMap[header] + 1;
+      minColumn = Math.min(minColumn, column);
+      maxColumn = Math.max(maxColumn, column);
     });
-
-    writeGroup();
+    rowsByNumber.set(rowNumber, merged);
+    minRow = Math.min(minRow, rowNumber);
+    maxRow = Math.max(maxRow, rowNumber);
   });
+
+  const rowCount = maxRow - minRow + 1;
+  const columnCount = maxColumn - minColumn + 1;
+  const range = sheet.getRange(minRow, minColumn, rowCount, columnCount);
+  const values = range.getValues();
+
+  rowsByNumber.forEach((updates, rowNumber) => {
+    Object.entries(updates).forEach(([header, value]) => {
+      values[rowNumber - minRow][headerMap[header] + 1 - minColumn] = value;
+    });
+  });
+
+  range.setValues(values);
   invalidateRecordCache_(sheetName);
 }
 
@@ -908,152 +659,4 @@ function numberOrThrow_(
 function now_() {
 
   return new Date();
-}
-
-
-/**
- * One-time V1.3 recovery helper.
- *
- * The first test PT game was written below the original PT_Catalog
- * native Table because the pre-V1.3 appendRecord_() used appendRow().
- *
- * This helper expands the PT_Catalog native table sufficiently to
- * include all currently populated worksheet rows.
- *
- * Run this ONCE after installing V1.3 if PT_Catalog contains a record
- * below the current native Table range.
- *
- * This helper does not move, modify, or duplicate any catalog data.
- */
-function recoverPTCatalogTableRangeV13() {
-
-  const spreadsheet =
-    getInventorySpreadsheet_();
-
-  const sheet =
-    getSheetOrThrow_(
-      'PT_Catalog'
-    );
-
-  const lastDataRow =
-    sheet.getLastRow();
-
-
-  if (lastDataRow < 2) {
-
-    return {
-      changed: false,
-      message: 'PT_Catalog contains no data rows to recover.'
-    };
-  }
-
-
-  const apiSpreadsheet =
-    Sheets.Spreadsheets.get(
-
-      spreadsheet.getId(),
-
-      {
-        includeGridData: false
-      }
-    );
-
-
-  const apiSheet =
-    (apiSpreadsheet.sheets || [])
-      .find(
-        (candidate) => {
-
-          return (
-            candidate.properties.sheetId ===
-            sheet.getSheetId()
-          );
-        }
-      );
-
-
-  if (!apiSheet) {
-
-    throw new Error(
-      'PT_Catalog API sheet metadata could not be found.'
-    );
-  }
-
-
-  const table =
-    (apiSheet.tables || [])
-      .find(
-        (candidate) => {
-
-          return (
-            candidate.name ===
-            'PT_Catalog_Table'
-          );
-        }
-      );
-
-
-  if (!table) {
-
-    throw new Error(
-      'PT_Catalog_Table could not be found.'
-    );
-  }
-
-
-  /*
-   * API table ranges use an exclusive endRowIndex.
-   *
-   * Worksheet row 21 therefore requires endRowIndex >= 21.
-   */
-  const currentEndRowIndex =
-    table.range.endRowIndex || 0;
-
-
-  if (
-    currentEndRowIndex >=
-    lastDataRow
-  ) {
-
-    return {
-      changed: false,
-      message:
-        'PT_Catalog_Table already includes all populated rows.'
-    };
-  }
-
-
-  const updatedTable =
-    JSON.parse(
-      JSON.stringify(table)
-    );
-
-
-  updatedTable.range.endRowIndex =
-    lastDataRow;
-
-
-  Sheets.Spreadsheets.batchUpdate(
-
-    {
-      requests: [
-        {
-          updateTable: {
-            table: updatedTable,
-            fields: 'range'
-          }
-        }
-      ]
-    },
-
-    spreadsheet.getId()
-  );
-
-
-  return {
-    changed: true,
-    lastDataRow: lastDataRow,
-    message:
-      `PT_Catalog_Table was expanded through worksheet row ${lastDataRow}.`
-  };
 }

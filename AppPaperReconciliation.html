@@ -104,7 +104,7 @@
   async function openPaperReconciliation() {
     showScreen('paper-reconciliation-screen');
 
-    $('paper-recon-date').valueAsDate = new Date();
+    $('paper-recon-date').value = localIsoDate();
     clearStatus('paper-recon-status');
 
     try {

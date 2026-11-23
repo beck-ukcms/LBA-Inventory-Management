@@ -145,15 +145,22 @@ function addAlternateFormToGame(token, gameId, formNumber) {
 function getPaperCatalog_(){
   return getRecords_('Paper_Catalog');
 }
-function getOrderingCatalogs(token){
+function getOrderingCatalogs(token) {
   requireAdmin_(token);
+  const games = getPTCatalog_();
+  const gamesById = new Map(games.map((game) => [String(game.PT_Game_ID), game]));
   return {
-    pt:buildPTFormOptions_().map(x=>Object.assign(x,{
-      dealsPerCase:Number((getPTCatalog_().find(g=>String(g.PT_Game_ID)===x.gameId)||{
-      }).Deals_Per_Case)||0
-    })),paper:getPaperCatalog_().filter(x=>x.Active===true||String(x.Active).toLowerCase()==='true').map(x=>({
-      paperId:String(x.Paper_ID),shortName:String(x.Short_Name),description:String(x.Description),packsPerCase:Number(x.Packs_Per_Case),label:`${x.Short_Name} - ${x.Description}`
-    })).sort((a,b)=>a.label.localeCompare(b.label)),gameTypes:PT_GAME_TYPES
+    pt: buildPTFormOptions_().map((option) => Object.assign(option, {
+      dealsPerCase: Number((gamesById.get(option.gameId) || {}).Deals_Per_Case || 0)
+    })),
+    paper: getPaperCatalog_().filter(isActiveCatalogRecord_).map((paper) => ({
+      paperId: String(paper.Paper_ID),
+      shortName: String(paper.Short_Name),
+      description: String(paper.Description),
+      packsPerCase: Number(paper.Packs_Per_Case),
+      label: `${paper.Short_Name} - ${paper.Description}`
+    })).sort((a, b) => a.label.localeCompare(b.label)),
+    gameTypes: PT_GAME_TYPES
   };
 }
 function createPaperType(token, payload) {
@@ -250,33 +257,14 @@ function createPaperType(token, payload) {
     Notes: normalizeText_(payload.notes)
   };
 
-  const appendedRowNumber = appendRecord_(
-    'Paper_Catalog',
-    recordToWrite
-  );
-
-  SpreadsheetApp.flush();
-
-  const createdPaper = getPaperCatalog_().find((paper) => {
-    return String(paper.Paper_ID) === String(paperId);
-  });
-
-  if (!createdPaper) {
-    throw new Error(
-      `Paper type ${paperId} was written to row ${appendedRowNumber} ` +
-      'but could not be read back from Paper_Catalog.'
-    );
+    appendRecord_('Paper_Catalog', recordToWrite);
+    return {
+      paperId: paperId,
+      shortName: shortName,
+      description: description,
+      label: `${shortName} - ${description}`
+    };
   }
-
-  return {
-    paperId: paperId,
-    shortName: shortName,
-    label: `${shortName} - ${description}`,
-    appendedRowNumber: appendedRowNumber,
-    createdPaper: createdPaper
-  };
-}
-
 function getCatalogMaintenanceData(token) {
   requireAdmin_(token);
   return {
@@ -298,35 +286,79 @@ function getCatalogMaintenanceData(token) {
 }
 
 function updatePTGame(token, payload) {
-  requireAdmin_(token); payload=payload||{};
-  const game=getPTCatalog_().find(g=>String(g.PT_Game_ID)===String(payload.gameId));
-  if(!game) throw new Error('PT game was not found.');
-  const primary=assertFormAvailable_(payload.primaryFormNumber,game.PT_Game_ID);
-  const alts=splitAlternateForms_(payload.alternateFormNumbers); alts.forEach(f=>assertFormAvailable_(f,game.PT_Game_ID));
-  const cards=integerOrThrow_(payload.cardsPerDeal,'Cards per Deal',{allowZero:false});
-  const deals=integerOrThrow_(payload.dealsPerCase,'Deals per Case',{allowZero:false});
-  const price=numberOrThrow_(payload.pricePerCard,'Price per Card'); const payout=numberOrThrow_(payload.payoutPerDeal,'Payout per Deal');
-  const cost=numberOrThrow_(payload.manufacturerCostPerDeal,'Manufacturer Cost per Deal'); const gross=cards*price; const net=gross-payout-cost;
-  updateRecordRow_('PT_Catalog',game._rowNumber,{Game_Name:normalizeText_(payload.gameName),Game_Type:payload.gameType,Primary_Form_Number:primary,
-    Alternate_Form_Numbers:alts.join(', '),Active:Boolean(payload.active),Display_Order:integerOrThrow_(payload.displayOrder,'Display Order'),
-    Cards_Per_Deal:cards,Deals_Per_Case:deals,Price_Per_Card:price,Payout_Per_Deal:payout,Manufacturer_Cost_Per_Deal:cost,
-    Gross_Receipts_Per_Deal:gross,Gaming_Income_Before_Cost:gross-payout,Net_Income_Per_Deal:net,
-    Net_Income_Per_Patron_Dollar:gross?net/gross:0,Manufacturer_Cost_Per_Patron_Dollar:gross?cost/gross:0,
-    Manufacturer_Cost_Per_Case:cost*deals,Target_On_Hand:integerOrThrow_(payload.targetOnHand,'Target On Hand'),
-    Target_Bundled:integerOrThrow_(payload.targetBundled,'Target Bundled'),Notes:normalizeText_(payload.notes)});
-  return {ok:true};
+  requireAdmin_(token);
+  payload = payload || {};
+  const game = getPTCatalog_().find((row) => String(row.PT_Game_ID) === String(payload.gameId));
+  if (!game) throw new Error('PT game was not found.');
+  const name = normalizeText_(payload.gameName);
+  if (!name) throw new Error('Game Name is required.');
+  if (!PT_GAME_TYPES.includes(payload.gameType)) throw new Error('Select a valid Game Type.');
+  const primary = assertFormAvailable_(payload.primaryFormNumber, game.PT_Game_ID);
+  const alternates = splitAlternateForms_(payload.alternateFormNumbers);
+  if (alternates.includes(primary)) throw new Error('Primary Form Number cannot also appear as an alternate.');
+  alternates.forEach((form) => assertFormAvailable_(form, game.PT_Game_ID));
+  const cards = integerOrThrow_(payload.cardsPerDeal, 'Cards per Deal', {allowZero: false});
+  const deals = integerOrThrow_(payload.dealsPerCase, 'Deals per Case', {allowZero: false});
+  const price = numberOrThrow_(payload.pricePerCard, 'Price per Card');
+  const payout = numberOrThrow_(payload.payoutPerDeal, 'Payout per Deal');
+  const cost = numberOrThrow_(payload.manufacturerCostPerDeal, 'Manufacturer Cost per Deal');
+  const gross = cards * price;
+  const net = gross - payout - cost;
+  updateRecordRow_('PT_Catalog', game._rowNumber, {
+    Game_Name: name, Game_Type: payload.gameType, Primary_Form_Number: primary,
+    Alternate_Form_Numbers: alternates.join(', '), Active: Boolean(payload.active),
+    Display_Order: integerOrThrow_(payload.displayOrder, 'Display Order'), Cards_Per_Deal: cards,
+    Deals_Per_Case: deals, Price_Per_Card: price, Payout_Per_Deal: payout,
+    Manufacturer_Cost_Per_Deal: cost, Gross_Receipts_Per_Deal: gross,
+    Gaming_Income_Before_Cost: gross - payout, Net_Income_Per_Deal: net,
+    Net_Income_Per_Patron_Dollar: gross ? net / gross : 0,
+    Manufacturer_Cost_Per_Patron_Dollar: gross ? cost / gross : 0,
+    Manufacturer_Cost_Per_Case: cost * deals,
+    Target_On_Hand: integerOrThrow_(payload.targetOnHand, 'Target On Hand'),
+    Target_Bundled: integerOrThrow_(payload.targetBundled, 'Target Bundled'),
+    Notes: normalizeText_(payload.notes)
+  });
+  return Object.assign({}, payload, {
+    gameId: String(game.PT_Game_ID), gameName: name, gameType: payload.gameType,
+    primaryFormNumber: primary, alternateFormNumbers: alternates.join(', '),
+    label: `${name} (${primary})`
+  });
 }
 
-function updatePaperType(token,payload){
-  requireAdmin_(token); payload=payload||{}; const paper=getPaperCatalog_().find(p=>String(p.Paper_ID)===String(payload.paperId));
-  if(!paper) throw new Error('Paper type was not found.');
-  const ppb=numberOrThrow_(payload.packsPerBox,'Packs per Box'); const bpc=integerOrThrow_(payload.boxesPerCase,'Boxes per Case',{allowZero:false});
-  const ppc=ppb*bpc; if(!Number.isInteger(ppc)) throw new Error('Packs per case must be a whole number.');
-  const cost=numberOrThrow_(payload.manufacturerCostPerCase,'Manufacturer Cost per Case'); const price=numberOrThrow_(payload.salesPricePerPack,'Sales Price per Pack');
-  const cpp=ppc?cost/ppc:0; const net=price-cpp;
-  updateRecordRow_('Paper_Catalog',paper._rowNumber,{Short_Name:normalizeText_(payload.shortName).toUpperCase(),Description:normalizeText_(payload.description),
-    Active:Boolean(payload.active),Display_Order:integerOrThrow_(payload.displayOrder,'Display Order'),Packs_Per_Box:ppb,Boxes_Per_Case:bpc,Packs_Per_Case:ppc,
-    Manufacturer_Cost_Per_Case:cost,Manufacturer_Cost_Per_Pack:cpp,Sales_Price_Per_Pack:price,Net_Income_Per_Pack:net,
-    Net_Income_Per_Patron_Dollar:price?net/price:0,Manufacturer_Cost_Per_Patron_Dollar:price?cpp/price:0,
-    Target_On_Hand:integerOrThrow_(payload.targetOnHand,'Target On Hand'),Notes:normalizeText_(payload.notes)}); return {ok:true};
+function updatePaperType(token, payload) {
+  requireAdmin_(token);
+  payload = payload || {};
+  const paper = getPaperCatalog_().find((row) => String(row.Paper_ID) === String(payload.paperId));
+  if (!paper) throw new Error('Paper type was not found.');
+  const shortName = normalizeText_(payload.shortName).toUpperCase();
+  const description = normalizeText_(payload.description);
+  if (!shortName || !description) throw new Error('Paper Short Name and Description are required.');
+  const duplicate = getPaperCatalog_().find((row) => {
+    return String(row.Paper_ID) !== String(payload.paperId) && isActiveCatalogRecord_(row) &&
+      normalizeText_(row.Short_Name).toUpperCase() === shortName;
+  });
+  if (duplicate && payload.active) throw new Error(`Active paper type ${shortName} already exists.`);
+  const packsPerBox = numberOrThrow_(payload.packsPerBox, 'Packs per Box');
+  const boxesPerCase = integerOrThrow_(payload.boxesPerCase, 'Boxes per Case', {allowZero: false});
+  const packsPerCase = packsPerBox * boxesPerCase;
+  if (!Number.isInteger(packsPerCase)) throw new Error('Packs per case must be a whole number.');
+  const cost = numberOrThrow_(payload.manufacturerCostPerCase, 'Manufacturer Cost per Case');
+  const price = numberOrThrow_(payload.salesPricePerPack, 'Sales Price per Pack');
+  const costPerPack = packsPerCase ? cost / packsPerCase : 0;
+  const net = price - costPerPack;
+  updateRecordRow_('Paper_Catalog', paper._rowNumber, {
+    Short_Name: shortName, Description: description, Active: Boolean(payload.active),
+    Display_Order: integerOrThrow_(payload.displayOrder, 'Display Order'), Packs_Per_Box: packsPerBox,
+    Boxes_Per_Case: boxesPerCase, Packs_Per_Case: packsPerCase,
+    Manufacturer_Cost_Per_Case: cost, Manufacturer_Cost_Per_Pack: costPerPack,
+    Sales_Price_Per_Pack: price, Net_Income_Per_Pack: net,
+    Net_Income_Per_Patron_Dollar: price ? net / price : 0,
+    Manufacturer_Cost_Per_Patron_Dollar: price ? costPerPack / price : 0,
+    Target_On_Hand: integerOrThrow_(payload.targetOnHand, 'Target On Hand'),
+    Notes: normalizeText_(payload.notes)
+  });
+  return Object.assign({}, payload, {
+    paperId: String(paper.Paper_ID), shortName: shortName, description: description,
+    packsPerCase: packsPerCase, label: `${shortName} - ${description}`
+  });
 }

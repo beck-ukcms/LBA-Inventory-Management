@@ -138,3 +138,11 @@ function resolveInventoryIssue(token, issueId, resolutionNotes) {
     status: 'Resolved'
   };
 }
+
+function resolveInventoryIssueRecord_(issue, resolutionNotes) {
+  updateRecordRow_('Inventory_Issues', issue._rowNumber, {
+    Status: 'Resolved',
+    Resolved_At: now_(),
+    Resolution_Notes: normalizeText_(resolutionNotes)
+  });
+}

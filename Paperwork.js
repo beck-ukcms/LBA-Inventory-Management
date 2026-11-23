@@ -1341,114 +1341,58 @@ function postSessionProcessingMarker_(
 
 function processSessionPaper_(spreadsheet, context, sourceFile) {
   const sheet = spreadsheet.getSheetByName('WS-01 Paper');
+  if (!sheet) throw new Error('Required worksheet WS-01 Paper is missing.');
+  const requestedRows = PAPER_ROWS_BY_SESSION[context.label];
+  const firstRow = Math.min(...requestedRows);
+  const lastRow = Math.max(...requestedRows);
+  const values = sheet.getRange(firstRow, 2, lastRow - firstRow + 1, 5).getValues();
+  const casesBySerial = new Map(getPaperCases_().filter((row) => normalizeText_(row.Serial_Number)).map((row) => [normalizeText_(row.Serial_Number), row]));
+  const entries = [];
+  const issues = [];
+  const caseUpdates = new Map();
 
-  if (!sheet) {
-    throw new Error('Required worksheet WS-01 Paper is missing.');
-  }
-
-  let transactionCount = 0;
-
-  PAPER_ROWS_BY_SESSION[context.label].forEach((rowNumber) => {
-    const description = normalizeText_(sheet.getRange(rowNumber, 2).getDisplayValue());
-    const serialNumber = normalizeText_(sheet.getRange(rowNumber, 3).getDisplayValue());
-    const quantity = Number(sheet.getRange(rowNumber, 6).getValue() || 0);
-
-    if (!serialNumber && quantity === 0) {
-      return;
-    }
-
-    if (!serialNumber || !Number.isInteger(quantity) || quantity < 0) {
-      throw new Error(
-        `Invalid Paper entry on WS-01 row ${rowNumber}.`
-      );
-    }
-
-    if (quantity === 0) {
-      return;
-    }
-
-    const paperCase = getPaperCases_().find((candidate) => {
-      return normalizeText_(candidate.Serial_Number) === serialNumber;
-    });
-
+  requestedRows.forEach((rowNumber) => {
+    const row = values[rowNumber - firstRow];
+    const description = normalizeText_(row[0]);
+    const serialNumber = normalizeText_(row[1]);
+    const quantity = Number(row[4] || 0);
+    if (!serialNumber && quantity === 0) return;
+    if (!serialNumber || !Number.isInteger(quantity) || quantity < 0) throw new Error(`Invalid Paper entry on WS-01 row ${rowNumber}.`);
+    if (quantity === 0) return;
+    const paperCase = casesBySerial.get(serialNumber);
     if (!paperCase) {
-      createInventoryIssue_({
-        inventoryType: 'Paper',
-        issueType: 'Unknown Serial',
-        productId: '',
-        itemId: '',
-        serialNumber: serialNumber,
-        sessionId: context.sessionId,
-        expectedQuantity: 0,
-        reportedQuantity: quantity,
-        discrepancyAmount: quantity,
-        notes:
-          `WS-01 row ${rowNumber}: ${description}. ` +
-          `Source file ${sourceFile.getId()}.`
-      });
+      issues.push({inventoryType:'Paper', issueType:'Unknown Serial', productId:'', itemId:'', serialNumber:serialNumber,
+        sessionId:context.sessionId, expectedQuantity:0, reportedQuantity:quantity, discrepancyAmount:quantity,
+        notes:`WS-01 row ${rowNumber}: ${description}. Source file ${sourceFile.getId()}.`});
       return;
     }
-
-    const balance = getPaperCasePackBalance_(paperCase.Paper_Case_ID);
-
-    if (quantity > balance) {
-      createInventoryIssue_({
-        inventoryType: 'Paper',
-        issueType: 'Insufficient Inventory',
-        productId: paperCase.Paper_ID,
-        itemId: paperCase.Paper_Case_ID,
-        serialNumber: serialNumber,
-        sessionId: context.sessionId,
-        expectedQuantity: balance,
-        reportedQuantity: quantity,
-        discrepancyAmount: quantity - balance,
-        notes:
-          `Paperwork reports ${quantity} packs used from a ledger balance ` +
-          `of ${balance}. WS-01 row ${rowNumber}.`
-      });
-    }
-
-    postInventoryTransaction_({
-      effectiveDate: context.date,
-      inventoryType: 'Paper',
-      productId: paperCase.Paper_ID,
-      itemId: paperCase.Paper_Case_ID,
-      serialNumber: serialNumber,
-      transactionType: 'Sold',
-      quantityChange: -quantity,
-      unit: 'Pack',
-      sessionId: context.sessionId,
-      source: SESSION_PROCESSING_SOURCE,
-      notes:
-        `${description}; WS-01 row ${rowNumber}; ` +
-        `source file ${sourceFile.getId()}.`
-    });
-
-    const remaining = balance - quantity;
-    const updates = {};
-
-    if (remaining <= 0) {
-      updates.Case_Status = 'Expended';
-      updates.Expended_Date = context.date;
-    } else if (String(paperCase.Case_Status) === 'Unopened') {
-      updates.Case_Status = 'Opened';
-      updates.Opened_Date = context.date;
-    }
-
-    if (Object.keys(updates).length) {
-      updateRecordRow_(
-        'Paper_Cases',
-        paperCase._rowNumber,
-        updates
-      );
-    }
-
-    transactionCount += 1;
+    const previous = caseUpdates.get(String(paperCase.Paper_Case_ID)) || {delta: 0, row: paperCase};
+    const balance = Number(paperCase.Current_Packs || 0) + previous.delta;
+    if (quantity > balance) issues.push({inventoryType:'Paper', issueType:'Insufficient Inventory', productId:paperCase.Paper_ID,
+      itemId:paperCase.Paper_Case_ID, serialNumber:serialNumber, sessionId:context.sessionId, expectedQuantity:balance,
+      reportedQuantity:quantity, discrepancyAmount:quantity-balance,
+      notes:`Paperwork reports ${quantity} packs used from a current balance of ${balance}. WS-01 row ${rowNumber}.`});
+    entries.push({effectiveDate:context.date, inventoryType:'Paper', productId:paperCase.Paper_ID, itemId:paperCase.Paper_Case_ID,
+      serialNumber:serialNumber, transactionType:'Sold', quantityChange:-quantity, unit:'Pack', sessionId:context.sessionId,
+      source:SESSION_PROCESSING_SOURCE, notes:`${description}; WS-01 row ${rowNumber}; source file ${sourceFile.getId()}.`});
+    previous.delta -= quantity;
+    caseUpdates.set(String(paperCase.Paper_Case_ID), previous);
   });
 
-  return transactionCount;
+  issues.forEach(createInventoryIssue_);
+  postInventoryTransactions_(entries, {refreshPaperCatalog:false});
+  const statusUpdates = [];
+  caseUpdates.forEach(({delta, row}) => {
+    const remaining = Number(row.Current_Packs || 0) + delta;
+    const updates = {};
+    if (remaining <= 0) { updates.Case_Status='Expended'; updates.Expended_Date=context.date; }
+    else if (String(row.Case_Status) === 'Unopened') { updates.Case_Status='Opened'; updates.Opened_Date=context.date; }
+    if (Object.keys(updates).length) statusUpdates.push({rowNumber:row._rowNumber, updates:updates});
+  });
+  updateRecordRows_('Paper_Cases', statusUpdates);
+  refreshPaperCatalogBalances_();
+  return entries.length;
 }
-
 
 function processSessionPT_(spreadsheet, context, sourceFile) {
   let transactions = 0;

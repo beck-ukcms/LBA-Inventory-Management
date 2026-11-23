@@ -170,10 +170,10 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       ],
       widths: [125, 110, 155, 105, 105, 125, 135, 135, 145, 120, 85, 150, 205, 155, 260],
       dropdowns: {
-        Inventory_Type: ['PT', 'Paper'],
-        Transaction_Type: ['Initial Inventory', 'Received', 'Bundled', 'Opened', 'Sold', 'Adjustment', 'Returned', 'Destroyed'],
-        Unit: ['Deal', 'Pack'],
-        Source: ['Initialization', 'Session Paperwork Processing', 'Admin Manual'],
+        Inventory_Type: ['PT', 'Paper', 'System'],
+        Transaction_Type: ['Initial Inventory', 'Received', 'Bundled', 'Opened', 'Sold', 'Adjustment', 'Returned', 'Destroyed', 'Session Processing Started', 'Session Processed', 'Session Processing Failed'],
+        Unit: ['Deal', 'Pack', 'Session'],
+        Source: ['Initialization', 'Session Paperwork Processing', 'Inventory Ordering', 'PT Processing', 'Inventory Reconciliation', 'Admin Manual'],
       },
       checkboxes: [],
       integers: ['Quantity_Change'],
@@ -206,7 +206,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       widths: [115, 155, 100, 175, 105, 125, 135, 135, 150, 135, 140, 150, 100, 155, 280, 155, 300],
       dropdowns: {
         Inventory_Type: ['PT', 'Paper'],
-        Issue_Type: ['Unknown Serial', 'Insufficient Inventory', 'Paper Type Mismatch', 'Unknown Deal', 'Duplicate Sale', 'Form Mismatch', 'Unavailable Deal'],
+        Issue_Type: ['Unknown Serial', 'Insufficient Inventory', 'Paper Type Mismatch', 'Unknown Deal', 'Duplicate Sale', 'Form Mismatch', 'Unavailable Deal', 'Unexpected Deal'],
         Status: ['Open', 'Resolved', 'Dismissed'],
       },
       checkboxes: [],

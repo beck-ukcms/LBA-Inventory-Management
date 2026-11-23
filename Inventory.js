@@ -112,66 +112,21 @@ function createPTDeal_(data) {
 }
 
 
-function updatePTDealStatus_(deal, newStatus) {
-  if (!PT_DEAL_STATUSES.includes(newStatus)) {
-    throw new Error(`Invalid PT Deal Status: ${newStatus}`);
-  }
-
-  const updates = {
-    Deal_Status: newStatus
-  };
-
-  if (
-    newStatus === 'Bundled' &&
-    !deal.Bundled_Date
-  ) {
-    updates.Bundled_Date = now_();
-  }
-
-  if (
-    [
-      'Sold',
-      'Destroyed',
-      'Returned'
-    ].includes(newStatus) &&
-    !deal.Expended_Date
-  ) {
-    updates.Expended_Date = now_();
-  }
-
-  updateRecordRow_(
-    'PT_Deals',
-    deal._rowNumber,
-    updates
-  );
-}
-
-
 /**
  * Posts one authoritative inventory transaction.
  */
-function postInventoryTransaction_(data) {
+function buildInventoryTransactionRecord_(data, transactionId, timestamp) {
   const quantityChange = Number(data.quantityChange);
-
   if (!Number.isInteger(quantityChange)) {
-    throw new Error(
-      'Transaction Quantity_Change must be an integer.'
-    );
+    throw new Error('Transaction Quantity_Change must be an integer.');
   }
-
-  const transactionId = generateId_(
-    'TRANSACTION',
-    'TX-',
-    7
-  );
-
-  appendRecord_('Transactions', {
+  return {
     Transaction_ID: transactionId,
-    Effective_Date: data.effectiveDate || now_(),
-    Timestamp: now_(),
+    Effective_Date: data.effectiveDate || timestamp,
+    Timestamp: timestamp,
     Inventory_Type: data.inventoryType,
-    Product_ID: data.productId,
-    Item_ID: data.itemId,
+    Product_ID: data.productId || '',
+    Item_ID: data.itemId || '',
     Form_Number: data.formNumber || '',
     Serial_Number: data.serialNumber || '',
     Transaction_Type: data.transactionType,
@@ -181,15 +136,34 @@ function postInventoryTransaction_(data) {
     Source: data.source,
     Reconciliation_ID: data.reconciliationId || '',
     Notes: data.notes || ''
-  });
-
-  if (String(data.inventoryType) === 'Paper' && data.itemId) {
-    adjustPaperCurrentBalance_(data.itemId, quantityChange);
-  }
-
-  return transactionId;
+  };
 }
 
+function postInventoryTransactions_(entries, options = {}) {
+  if (!entries.length) return [];
+  const timestamp = now_();
+  const ids = generateIds_('TRANSACTION', 'TX-', 7, entries.length);
+  const records = entries.map((entry, index) => {
+    return buildInventoryTransactionRecord_(entry, ids[index], timestamp);
+  });
+  appendRecords_('Transactions', records);
+
+  const paperDeltas = new Map();
+  entries.forEach((entry) => {
+    if (String(entry.inventoryType) === 'Paper' && entry.itemId) {
+      const key = String(entry.itemId);
+      paperDeltas.set(key, (paperDeltas.get(key) || 0) + Number(entry.quantityChange));
+    }
+  });
+  if (paperDeltas.size && options.updatePaperBalances !== false) {
+    applyPaperBalanceDeltas_(paperDeltas, options.refreshPaperCatalog !== false);
+  }
+  return ids;
+}
+
+function postInventoryTransaction_(data) {
+  return postInventoryTransactions_([data])[0];
+}
 
 /**
  * Pre-validates a PT stock addition before any records are written.
@@ -336,37 +310,6 @@ function validateAnonymousPTStockAddition_(data) {
  * from being partially posted if an unexpected application/API failure occurs
  * after pre-validation succeeds.
  */
-function rollbackNewPTStockRecords_(createdRecords) {
-  if (!createdRecords.length) {
-    return;
-  }
-
-  const transactionIds = new Set(
-    createdRecords
-      .map((record) => record.transactionId)
-      .filter(Boolean)
-  );
-
-  const dealIds = new Set(
-    createdRecords
-      .map((record) => record.dealId)
-      .filter(Boolean)
-  );
-
-  deleteRowsByIdSet_(
-    'Transactions',
-    'Transaction_ID',
-    transactionIds
-  );
-
-  deleteRowsByIdSet_(
-    'PT_Deals',
-    'PT_Deal_ID',
-    dealIds
-  );
-}
-
-
 /**
  * Deletes rows matching IDs created by the currently failing operation.
  * Rows are deleted from bottom to top to avoid row-number shifting.
@@ -538,119 +481,6 @@ function createInventoryIssue_(data) {
  * If no anonymous deal remains, the newly discovered identified deal is added
  * to inventory and an Unexpected Deal Inventory Issue is generated.
  */
-function identifyPTDeal_(data) {
-  const serialNumber = normalizeText_(
-    data.serialNumber
-  );
-
-  if (!serialNumber) {
-    throw new Error(
-      'Serial Number is required.'
-    );
-  }
-
-  if (
-    findPTDeal_(
-      data.formNumber,
-      serialNumber
-    )
-  ) {
-    throw new Error(
-      `Deal ${data.formNumber}/${serialNumber} already exists.`
-    );
-  }
-
-  const formNumber = normalizeFormNumber_(
-    data.formNumber
-  );
-
-  const anonymousDeal = getPTDeals_().find((deal) => {
-    return (
-      String(deal.PT_Game_ID) === String(data.gameId) &&
-      normalizeFormNumber_(deal.Form_Number) === formNumber &&
-      !normalizeText_(deal.Serial_Number) &&
-      String(deal.Deal_Status) === 'Unbundled'
-    );
-  });
-
-  if (anonymousDeal) {
-    updateRecordRow_(
-      'PT_Deals',
-      anonymousDeal._rowNumber,
-      {
-        Serial_Number: serialNumber,
-        Deal_Status: data.newStatus || 'Bundled',
-        Bundled_Date: data.effectiveDate || now_()
-      }
-    );
-
-    postInventoryTransaction_({
-      effectiveDate: data.effectiveDate,
-      inventoryType: 'PT',
-      productId: data.gameId,
-      itemId: anonymousDeal.PT_Deal_ID,
-      formNumber: formNumber,
-      serialNumber: serialNumber,
-      transactionType: 'Bundled',
-      quantityChange: 0,
-      unit: 'Deal',
-      source: data.source || 'PT Processing',
-      notes: 'Serial assigned to unidentified deal.'
-    });
-
-    return {
-      dealId: anonymousDeal.PT_Deal_ID,
-      matchedAnonymous: true,
-      issueId: ''
-    };
-  }
-
-  const dealId = createPTDeal_({
-    gameId: data.gameId,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    status: data.newStatus || 'Bundled',
-    receivedDate: data.effectiveDate,
-    notes: data.notes
-  });
-
-  const transactionId = postInventoryTransaction_({
-    effectiveDate: data.effectiveDate,
-    inventoryType: 'PT',
-    productId: data.gameId,
-    itemId: dealId,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    transactionType: 'Adjustment',
-    quantityChange: 1,
-    unit: 'Deal',
-    source: data.source || 'PT Processing',
-    notes: 'Unexpected deal found during PT processing.'
-  });
-
-  const issueId = createInventoryIssue_({
-    inventoryType: 'PT',
-    issueType: 'Unexpected Deal',
-    productId: data.gameId,
-    itemId: dealId,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    expectedQuantity: 0,
-    reportedQuantity: 1,
-    discrepancyAmount: 1,
-    notes:
-      'No unidentified deal was available. ' +
-      `Transaction ${transactionId}.`
-  });
-
-  return {
-    dealId: dealId,
-    matchedAnonymous: false,
-    issueId: issueId
-  };
-}
-
-
 /**
  * Finds one PT deal by its permanent PT_Deal_ID.
  *
@@ -701,27 +531,6 @@ function findConflictingPTSerial_(
       normalizeText_(deal.Serial_Number) === normalizedSerialNumber
     );
   }) || null;
-}
-
-
-/**
- * Returns the current pack balance for one Paper_Case_ID.
- *
- * Paper inventory quantity is always derived from Transactions.
- */
-function getPaperCasePackBalance_(paperCaseId) {
-  const normalizedCaseId = normalizeText_(paperCaseId);
-
-  return getRecords_('Transactions')
-    .filter((transaction) => {
-      return (
-        String(transaction.Inventory_Type) === 'Paper' &&
-        String(transaction.Item_ID) === normalizedCaseId
-      );
-    })
-    .reduce((sum, transaction) => {
-      return sum + Number(transaction.Quantity_Change || 0);
-    }, 0);
 }
 
 
@@ -851,55 +660,147 @@ function buildPaperBalanceMap_(transactions) {
 
 
 // =============================================================================
-// V1.15 materialized current balances
+// Materialized operational balances
 // =============================================================================
+function ptStatusContribution_(status) {
+  return {
+    unbundled: status === 'Unbundled' ? 1 : 0,
+    bundled: status === 'Bundled' ? 1 : 0,
+    open: status === 'Open' ? 1 : 0,
+    onHand: ['Unbundled', 'Bundled'].includes(String(status)) ? 1 : 0
+  };
+}
+
+function applyPTCatalogBalanceDeltas_(deltasByGameId) {
+  if (!deltasByGameId || !deltasByGameId.size) return;
+  const updatedAt = now_();
+  const updates = getPTCatalog_().filter((row) => {
+    return deltasByGameId.has(String(row.PT_Game_ID));
+  }).map((row) => {
+    const delta = deltasByGameId.get(String(row.PT_Game_ID));
+    return {
+      rowNumber: row._rowNumber,
+      updates: {
+        Qty_Unbundled: Number(row.Qty_Unbundled || 0) + delta.unbundled,
+        Qty_Bundled: Number(row.Qty_Bundled || 0) + delta.bundled,
+        Qty_Open: Number(row.Qty_Open || 0) + delta.open,
+        Qty_On_Hand: Number(row.Qty_On_Hand || 0) + delta.onHand,
+        Balance_Updated_At: updatedAt
+      }
+    };
+  });
+  updateRecordRows_('PT_Catalog', updates);
+}
+
+function recordPTStatusChange_(deltasByGameId, gameId, oldStatus, newStatus) {
+  if (oldStatus === newStatus) return;
+  const before = ptStatusContribution_(oldStatus);
+  const after = ptStatusContribution_(newStatus);
+  const key = String(gameId);
+  const delta = deltasByGameId.get(key) || {unbundled: 0, bundled: 0, open: 0, onHand: 0};
+  Object.keys(delta).forEach((name) => delta[name] += after[name] - before[name]);
+  deltasByGameId.set(key, delta);
+}
+
 function refreshPTCatalogBalances_() {
-  const catalog = getRecords_('PT_Catalog');
   const counts = new Map();
-  getRecords_('PT_Deals').forEach((deal) => {
+  getPTDeals_().forEach((deal) => {
     const id = String(deal.PT_Game_ID);
-    const value = counts.get(id) || {unbundled:0,bundled:0,open:0};
+    const value = counts.get(id) || {unbundled: 0, bundled: 0, open: 0};
     if (deal.Deal_Status === 'Unbundled') value.unbundled += 1;
     if (deal.Deal_Status === 'Bundled') value.bundled += 1;
     if (deal.Deal_Status === 'Open') value.open += 1;
-    counts.set(id,value);
+    counts.set(id, value);
   });
   const updatedAt = now_();
-  updateRecordRows_('PT_Catalog', catalog.map(row => {
-    const value=counts.get(String(row.PT_Game_ID))||{unbundled:0,bundled:0,open:0};
-    return {rowNumber:row._rowNumber,updates:{Qty_Unbundled:value.unbundled,Qty_Bundled:value.bundled,
-      Qty_Open:value.open,Qty_On_Hand:value.unbundled+value.bundled,Balance_Updated_At:updatedAt}};
+  updateRecordRows_('PT_Catalog', getPTCatalog_().map((row) => {
+    const value = counts.get(String(row.PT_Game_ID)) || {unbundled: 0, bundled: 0, open: 0};
+    return {rowNumber: row._rowNumber, updates: {
+      Qty_Unbundled: value.unbundled,
+      Qty_Bundled: value.bundled,
+      Qty_Open: value.open,
+      Qty_On_Hand: value.unbundled + value.bundled,
+      Balance_Updated_At: updatedAt
+    }};
   }));
 }
 
 function refreshPaperCatalogBalances_() {
-  const catalog = getRecords_('Paper_Catalog');
   const totals = new Map();
-  getRecords_('Paper_Cases').forEach(row => totals.set(String(row.Paper_ID),(totals.get(String(row.Paper_ID))||0)+Number(row.Current_Packs||0)));
-  const updatedAt=now_();
-  updateRecordRows_('Paper_Catalog',catalog.map(row=>({rowNumber:row._rowNumber,
-    updates:{Qty_On_Hand:totals.get(String(row.Paper_ID))||0,Balance_Updated_At:updatedAt}})));
+  getPaperCases_().forEach((row) => {
+    const key = String(row.Paper_ID);
+    totals.set(key, (totals.get(key) || 0) + Number(row.Current_Packs || 0));
+  });
+  const updatedAt = now_();
+  updateRecordRows_('Paper_Catalog', getPaperCatalog_().map((row) => ({
+    rowNumber: row._rowNumber,
+    updates: {
+      Qty_On_Hand: totals.get(String(row.Paper_ID)) || 0,
+      Balance_Updated_At: updatedAt
+    }
+  })));
 }
 
-function adjustPaperCurrentBalance_(caseId, delta) {
-  if (!caseId || !delta) return;
-  const paperCase=getRecords_('Paper_Cases').find(row=>String(row.Paper_Case_ID)===String(caseId));
-  if (!paperCase) throw new Error(`Paper case ${caseId} was not found for balance update.`);
-  const quantity=Number(paperCase.Current_Packs||0)+Number(delta);
-  updateRecordRow_('Paper_Cases',paperCase._rowNumber,{Current_Packs:quantity,Balance_Updated_At:now_()});
-  refreshPaperCatalogBalances_();
+function applyPaperBalanceDeltas_(deltasByCaseId, refreshCatalog = true) {
+  if (!deltasByCaseId || !deltasByCaseId.size) return;
+  const updatedAt = now_();
+  const updates = getPaperCases_().filter((row) => {
+    return deltasByCaseId.has(String(row.Paper_Case_ID));
+  }).map((row) => ({
+    rowNumber: row._rowNumber,
+    updates: {
+      Current_Packs: Number(row.Current_Packs || 0) + deltasByCaseId.get(String(row.Paper_Case_ID)),
+      Balance_Updated_At: updatedAt
+    }
+  }));
+  if (updates.length !== deltasByCaseId.size) {
+    throw new Error('One or more Paper cases were not found for a balance update.');
+  }
+  updateRecordRows_('Paper_Cases', updates);
+  if (refreshCatalog) refreshPaperCatalogBalances_();
 }
 
 function initializeCurrentBalancesV115() {
-  const transactions=getRecords_('Transactions');
-  const balances=buildPaperBalanceMap_(transactions);
-  const cases=getRecords_('Paper_Cases');
-  updateRecordRows_('Paper_Cases',cases.map(row=>({rowNumber:row._rowNumber,
-    updates:{Current_Packs:balances.get(String(row.Paper_Case_ID))||0,Balance_Updated_At:now_()}})));
+  const balances = buildPaperBalanceMap_(getRecords_('Transactions'));
+  const cases = getPaperCases_();
+  const updatedAt = now_();
+  updateRecordRows_('Paper_Cases', cases.map((row) => ({
+    rowNumber: row._rowNumber,
+    updates: {
+      Current_Packs: balances.get(String(row.Paper_Case_ID)) || 0,
+      Balance_Updated_At: updatedAt
+    }
+  })));
   refreshPaperCatalogBalances_();
   refreshPTCatalogBalances_();
-  return {ok:true,version:'1.15',paperCases:cases.length};
+  return {ok: true, version: '1.15', paperCases: cases.length};
 }
+
+function validateMaterializedBalances_() {
+  const errors = [];
+  const ledger = buildPaperBalanceMap_(getRecords_('Transactions'));
+  getPaperCases_().forEach((paperCase) => {
+    const expected = ledger.get(String(paperCase.Paper_Case_ID)) || 0;
+    const actual = Number(paperCase.Current_Packs || 0);
+    if (expected !== actual) errors.push(`Paper case ${paperCase.Paper_Case_ID}: ledger ${expected}, current ${actual}.`);
+  });
+  const ptCounts = new Map();
+  getPTDeals_().forEach((deal) => {
+    const key = String(deal.PT_Game_ID);
+    const c = ptCounts.get(key) || {unbundled: 0, bundled: 0, open: 0, onHand: 0};
+    const v = ptStatusContribution_(String(deal.Deal_Status));
+    Object.keys(c).forEach((name) => c[name] += v[name]);
+    ptCounts.set(key, c);
+  });
+  getPTCatalog_().forEach((game) => {
+    const c = ptCounts.get(String(game.PT_Game_ID)) || {unbundled: 0, bundled: 0, open: 0, onHand: 0};
+    [['Qty_Unbundled','unbundled'],['Qty_Bundled','bundled'],['Qty_Open','open'],['Qty_On_Hand','onHand']].forEach(([field,key]) => {
+      if (Number(game[field] || 0) !== c[key]) errors.push(`PT game ${game.PT_Game_ID}.${field}: expected ${c[key]}, found ${game[field] || 0}.`);
+    });
+  });
+  return {valid: errors.length === 0, errors: errors};
+}
+
 /** Shared reconciliation record operations. */
 function createReconciliationRecord_(data) {
   const expected = integerOrThrow_(data.expectedQuantity, 'Expected Quantity');

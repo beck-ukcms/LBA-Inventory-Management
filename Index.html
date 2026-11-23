@@ -56,11 +56,11 @@
      <? } ?>
      <? }); ?>
      <button class="tile" type="button" onclick="openDashboard()">
-      <div style="aspect-ratio:1;background:linear-gradient(135deg,#155b25,#6aa84f);display:grid;place-items:center;color:white;font-size:72px">▦</div>
+      <div class="tile-visual dashboard">▦</div>
       <div class="tile-copy"><h2>Inventory Dashboard</h2><p>Review active inventory and place the weekly order.</p></div>
      </button>
-     <button class="tile" onclick="openAdminLogin()">
-      <div style="aspect-ratio:1;background:linear-gradient(135deg,#08275a,#075db6);display:grid;place-items:center;color:white;font-size:88px">
+     <button class="tile" type="button" onclick="openAdminLogin()">
+      <div class="tile-visual admin">
        ⚙
       </div>
       <div class="tile-copy">
@@ -73,7 +73,7 @@
       </div>
      </button>
     </div>
-    <p class="muted" style="text-align:center;margin-top:24px">
+    <p class="muted home-support">
      Support:
      <?= appConfig.supportEmail ?>
     </p>
@@ -91,7 +91,7 @@
   </main>
   <div class="modal" id="admin-login-modal">
    <div class="modal-card">
-    <button class="close" onclick="closeModal('admin-login-modal')">
+    <button class="close" type="button" onclick="closeModal('admin-login-modal')">
      ×
     </button>
     <h2>
@@ -102,10 +102,10 @@
     </label>
     <input autocomplete="one-time-code" id="admin-code" inputmode="numeric" type="password"/>
     <div class="actions" style="margin-top:16px">
-     <button class="btn" onclick="submitAdminLogin()">
+     <button class="btn" type="button" onclick="submitAdminLogin()">
       Continue
      </button>
-     <button class="btn secondary" onclick="closeModal('admin-login-modal')">
+     <button class="btn secondary" type="button" onclick="closeModal('admin-login-modal')">
       Cancel
      </button>
     </div>

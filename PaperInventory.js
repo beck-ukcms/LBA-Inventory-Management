@@ -100,7 +100,7 @@ function getPaperCasesForReconciliation(token, paperId) {
         caseId: String(paperCase.Paper_Case_ID),
         serialNumber: normalizeText_(paperCase.Serial_Number),
         recordedStatus: String(paperCase.Case_Status),
-        calculatedPacks: getPaperCasePackBalance_(paperCase.Paper_Case_ID),
+        calculatedPacks: Number(paperCase.Current_Packs || 0),
         notes: normalizeText_(paperCase.Notes)
       };
     })
@@ -272,7 +272,7 @@ function reconcileExistingPaperCase_(context) {
   const observedSerial = normalizeText_(observation.serialNumber);
   const recordedStatus = String(existingCase.Case_Status);
   const requestedStatus = normalizeText_(observation.observedStatus);
-  const expectedPacks = getPaperCasePackBalance_(caseId);
+  const expectedPacks = Number(existingCase.Current_Packs || 0);
   const observedPacks = Number(observation.observedPacks);
   const packsPerCase = getPaperPacksPerCase_(context.paperId);
   const observedStatus = derivePaperCaseStatus_(
@@ -454,7 +454,8 @@ function reconcileNewlyDiscoveredPaperCase_(context) {
       unit: 'Pack',
       source: 'Inventory Reconciliation',
       reconciliationId: reconciliation.id,
-      notes: notes
+      notes: notes,
+      currentPacks: 0
     });
 
     linkReconciliationTransaction_(
