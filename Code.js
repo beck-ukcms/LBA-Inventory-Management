@@ -113,34 +113,72 @@ function getSheetOrThrow_(sheetName) {
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @return {Object}
  */
-function getHeaderMap_(sheet) {
+const INVENTORY_STRUCTURE_CACHE_VERSION_ = 'v119b-1';
+const INVENTORY_STRUCTURE_CACHE_TTL_SECONDS_ = 21600;
 
-  const lastColumn = sheet.getLastColumn();
-
-  if (lastColumn < 1) {
-
-    throw new Error(
-      `Sheet ${sheet.getName()} has no headers.`
-    );
+function getInventoryStructureCache_() {
+  try {
+    return CacheService.getScriptCache();
+  } catch (error) {
+    return null;
   }
+}
 
+function inventoryStructureCacheKey_(kind, sheet) {
+  return [
+    'INV_STRUCTURE',
+    INVENTORY_STRUCTURE_CACHE_VERSION_,
+    kind,
+    getInventorySpreadsheet_().getId(),
+    sheet.getSheetId()
+  ].join(':');
+}
+
+function cacheInventoryStructureValue_(key, value) {
+  const cache = getInventoryStructureCache_();
+  if (!cache) return;
+  try {
+    cache.put(
+      key,
+      JSON.stringify(value),
+      INVENTORY_STRUCTURE_CACHE_TTL_SECONDS_
+    );
+  } catch (error) {
+    // Cache failure must never block inventory operations.
+  }
+}
+
+function readInventoryStructureCache_(key) {
+  const cache = getInventoryStructureCache_();
+  if (!cache) return null;
+  try {
+    const value = cache.get(key);
+    return value ? JSON.parse(value) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function getHeaderMap_(sheet) {
+  const cacheKey = inventoryStructureCacheKey_('HEADERS', sheet);
+  const cached = readInventoryStructureCache_(cacheKey);
+  if (cached && cached.headerMap) {
+    return cached.headerMap;
+  }
+  const lastColumn = sheet.getLastColumn();
+  if (lastColumn < 1) {
+    throw new Error(`Sheet ${sheet.getName()} has no headers.`);
+  }
   const headers = sheet
-    .getRange(
-      1,
-      1,
-      1,
-      lastColumn
-    )
+    .getRange(1, 1, 1, lastColumn)
     .getDisplayValues()[0];
-
-  return Object.fromEntries(
-    headers.map(
-      (header, index) => [
-        header,
-        index
-      ]
-    )
+  const headerMap = Object.fromEntries(
+    headers.map((header, index) => [header, index])
   );
+  cacheInventoryStructureValue_(cacheKey, {
+    headerMap: headerMap
+  });
+  return headerMap;
 }
 
 
@@ -320,22 +358,44 @@ function getRecords_(sheetName) {
  * @return {Object|null}
  */
 function getNativeTableForSheet_(sheet) {
+  const sheetId = String(sheet.getSheetId());
   if (!EXECUTION_NATIVE_TABLE_CACHE_) {
-    const spreadsheet = getInventorySpreadsheet_();
-    const response = Sheets.Spreadsheets.get(
-      spreadsheet.getId(),
-      { includeGridData: false }
-    );
     EXECUTION_NATIVE_TABLE_CACHE_ = new Map();
-    (response.sheets || []).forEach((apiSheet) => {
-      const table = (apiSheet.tables || [])[0] || null;
-      EXECUTION_NATIVE_TABLE_CACHE_.set(
-        String(apiSheet.properties.sheetId),
-        table
-      );
-    });
   }
-  const table = EXECUTION_NATIVE_TABLE_CACHE_.get(String(sheet.getSheetId()));
+  if (EXECUTION_NATIVE_TABLE_CACHE_.has(sheetId)) {
+    const executionTable = EXECUTION_NATIVE_TABLE_CACHE_.get(sheetId);
+    return executionTable
+      ? JSON.parse(JSON.stringify(executionTable))
+      : null;
+  }
+  const cacheKey = inventoryStructureCacheKey_('NATIVE_TABLE', sheet);
+  const cached = readInventoryStructureCache_(cacheKey);
+  if (cached && Object.prototype.hasOwnProperty.call(cached, 'table')) {
+    EXECUTION_NATIVE_TABLE_CACHE_.set(sheetId, cached.table);
+    return cached.table
+      ? JSON.parse(JSON.stringify(cached.table))
+      : null;
+  }
+  const spreadsheet = getInventorySpreadsheet_();
+  const response = Sheets.Spreadsheets.get(
+    spreadsheet.getId(),
+    {includeGridData:false}
+  );
+  (response.sheets || []).forEach((apiSheet) => {
+    const apiSheetId = String(apiSheet.properties.sheetId);
+    const table = (apiSheet.tables || [])[0] || null;
+    EXECUTION_NATIVE_TABLE_CACHE_.set(apiSheetId, table);
+    const spreadsheetSheet = spreadsheet.getSheets().find((candidate) => {
+      return String(candidate.getSheetId()) === apiSheetId;
+    });
+    if (spreadsheetSheet) {
+      cacheInventoryStructureValue_(
+        inventoryStructureCacheKey_('NATIVE_TABLE', spreadsheetSheet),
+        {table:table}
+      );
+    }
+  });
+  const table = EXECUTION_NATIVE_TABLE_CACHE_.get(sheetId) || null;
   return table ? JSON.parse(JSON.stringify(table)) : null;
 }
 
@@ -377,6 +437,15 @@ function resizeNativeTable_(
       EXECUTION_NATIVE_TABLE_CACHE_.set(
         String(updatedTable.range.sheetId),
         JSON.parse(JSON.stringify(updatedTable))
+      );
+    }
+    const resizedSheet = spreadsheet.getSheets().find((candidate) => {
+      return String(candidate.getSheetId()) === String(updatedTable.range.sheetId);
+    });
+    if (resizedSheet) {
+      cacheInventoryStructureValue_(
+        inventoryStructureCacheKey_('NATIVE_TABLE', resizedSheet),
+        {table:updatedTable}
       );
     }
   }

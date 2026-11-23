@@ -43,6 +43,53 @@ function createPTBundlingTimer_() {
 /**
  * Bundles one physical PT deal and returns receipt data.
  */
+
+function getPTDealsForBundlingLookup_() {
+  const sheet = getSheetOrThrow_('PT_Deals');
+  const headerMap = getHeaderMap_(sheet);
+  const requiredHeaders = [
+    'PT_Deal_ID',
+    'PT_Game_ID',
+    'Form_Number',
+    'Serial_Number',
+    'Deal_Status',
+    'Notes'
+  ];
+  requiredHeaders.forEach((header) => {
+    if (!(header in headerMap)) {
+      throw new Error(`Missing PT_Deals column: ${header}`);
+    }
+  });
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  const columns = requiredHeaders.map((header) => headerMap[header] + 1);
+  const firstColumn = Math.min(...columns);
+  const lastColumn = Math.max(...columns);
+  const values = sheet.getRange(
+    2,
+    firstColumn,
+    lastRow - 1,
+    lastColumn - firstColumn + 1
+  ).getValues();
+  return values.map((row, index) => {
+    const record = {_rowNumber:index + 2};
+    requiredHeaders.forEach((header) => {
+      record[header] = row[headerMap[header] + 1 - firstColumn];
+    });
+    return record;
+  }).filter((record) => normalizeText_(record.PT_Deal_ID));
+}
+
+function findPTDealForBundling_(deals, formNumber, serialNumber) {
+  const normalizedForm = normalizeFormNumber_(formNumber);
+  const normalizedSerial = normalizeText_(serialNumber);
+  return deals.find((deal) => {
+    return (
+      normalizeFormNumber_(deal.Form_Number) === normalizedForm &&
+      normalizeText_(deal.Serial_Number) === normalizedSerial
+    );
+  }) || null;
+}
 function bundlePTDeal(formNumber, serialNumber) {
   const timer = createPTBundlingTimer_();
   const normalizedForm = normalizeFormNumber_(formNumber);
@@ -60,13 +107,23 @@ function bundlePTDeal(formNumber, serialNumber) {
   lock.waitLock(30000);
   timer.mark('Document lock', `waitMs=${Date.now()-lockAt}`);
   try {
-    const existingDeal = findPTDeal_(normalizedForm, normalizedSerial);
+    const bundlingDeals = getPTDealsForBundlingLookup_();
+    const existingDeal = findPTDealForBundling_(
+      bundlingDeals,
+      normalizedForm,
+      normalizedSerial
+    );
     timer.mark('PT Deals lookup');
     let result;
     if (existingDeal) {
       result = bundleExistingIdentifiedPTDeal_({deal:existingDeal,game:game,formNumber:normalizedForm,serialNumber:normalizedSerial});
     } else {
-      result = bundleNewlyIdentifiedPTDeal_({game:game,formNumber:normalizedForm,serialNumber:normalizedSerial});
+      result = bundleNewlyIdentifiedPTDeal_({
+        game:game,
+        formNumber:normalizedForm,
+        serialNumber:normalizedSerial,
+        bundlingDeals:bundlingDeals
+      });
     }
     timer.mark('Inventory writes + transaction');
     const performance = timer.finish(`form=${normalizedForm}; action=${result.action}`);
@@ -183,7 +240,7 @@ function bundleExistingIdentifiedPTDeal_(context) {
 
 
 function bundleNewlyIdentifiedPTDeal_(context) {
-  const anonymousDeal = getPTDeals_().find((deal) => {
+  const anonymousDeal = context.bundlingDeals.find((deal) => {
     return (
       String(deal.PT_Game_ID) === String(context.game.PT_Game_ID) &&
       normalizeFormNumber_(deal.Form_Number) === context.formNumber &&
