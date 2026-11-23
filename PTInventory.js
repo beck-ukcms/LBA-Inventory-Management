@@ -23,70 +23,61 @@ function getPTBundlingGames() {
 }
 
 
+const PT_BUNDLING_PERF_VERSION = '1.19a';
+function createPTBundlingTimer_() {
+  const startedAt = Date.now();
+  let checkpointAt = startedAt;
+  const steps = [];
+  return {
+    mark: function(name, details) {
+      const now = Date.now();
+      steps.push({name:name, ms:now-checkpointAt, elapsedMs:now-startedAt, details:details || ''});
+      checkpointAt = now;
+    },
+    finish: function(details) {
+      return {version:PT_BUNDLING_PERF_VERSION, totalMs:Date.now()-startedAt, details:details || '', steps:steps};
+    }
+  };
+}
+
 /**
  * Bundles one physical PT deal and returns receipt data.
  */
 function bundlePTDeal(formNumber, serialNumber) {
+  const timer = createPTBundlingTimer_();
   const normalizedForm = normalizeFormNumber_(formNumber);
   const normalizedSerial = normalizeText_(serialNumber);
-
-  if (!normalizedForm || !normalizedSerial) {
-    throw new Error('Enter both a Form Number and Serial Number.');
-  }
-
-  const formOption = buildPTFormOptions_().find((option) => {
-    return option.formNumber === normalizedForm;
-  });
-
-  if (!formOption) {
-    throw new Error(`Form Number ${normalizedForm} was not found.`);
-  }
-
-  const game = getPTCatalog_().find((catalogRow) => {
-    return String(catalogRow.PT_Game_ID) === String(formOption.gameId);
-  });
-
-  if (!game) {
-    throw new Error(`Game ${formOption.gameId} was not found.`);
-  }
-
+  timer.mark('Normalize input');
+  if (!normalizedForm || !normalizedSerial) throw new Error('Enter both a Form Number and Serial Number.');
+  const formOption = buildPTFormOptions_().find((option) => option.formNumber === normalizedForm);
+  timer.mark('Catalog / form lookup');
+  if (!formOption) throw new Error(`Form Number ${normalizedForm} was not found.`);
+  const game = getPTCatalog_().find((row) => String(row.PT_Game_ID) === String(formOption.gameId));
+  timer.mark('Game lookup');
+  if (!game) throw new Error(`Game ${formOption.gameId} was not found.`);
   const lock = LockService.getDocumentLock();
+  const lockAt = Date.now();
   lock.waitLock(30000);
-
+  timer.mark('Document lock', `waitMs=${Date.now()-lockAt}`);
   try {
-    const existingDeal = findPTDeal_(
-      normalizedForm,
-      normalizedSerial
-    );
-
+    const existingDeal = findPTDeal_(normalizedForm, normalizedSerial);
+    timer.mark('PT Deals lookup');
     let result;
-
     if (existingDeal) {
-      result = bundleExistingIdentifiedPTDeal_({
-        deal: existingDeal,
-        game: game,
-        formNumber: normalizedForm,
-        serialNumber: normalizedSerial
-      });
+      result = bundleExistingIdentifiedPTDeal_({deal:existingDeal,game:game,formNumber:normalizedForm,serialNumber:normalizedSerial});
     } else {
-      result = bundleNewlyIdentifiedPTDeal_({
-        game: game,
-        formNumber: normalizedForm,
-        serialNumber: normalizedSerial
-      });
+      result = bundleNewlyIdentifiedPTDeal_({game:game,formNumber:normalizedForm,serialNumber:normalizedSerial});
     }
-
+    timer.mark('Inventory writes + transaction');
+    const performance = timer.finish(`form=${normalizedForm}; action=${result.action}`);
+    performance.append = result.appendPerformance || null;
+    delete result.appendPerformance;
     return Object.assign(result, {
-      gameId: String(game.PT_Game_ID),
-      gameName: String(game.Game_Name),
-      formNumber: normalizedForm,
-      serialNumber: normalizedSerial,
-      cards: String(game.Cards_Per_Deal || ''),
-      payout: String(game.Payout_Per_Deal || '')
+      gameId:String(game.PT_Game_ID),gameName:String(game.Game_Name),formNumber:normalizedForm,
+      serialNumber:normalizedSerial,cards:String(game.Cards_Per_Deal || ''),payout:String(game.Payout_Per_Deal || ''),
+      performance:performance
     });
-  } finally {
-    lock.releaseLock();
-  }
+  } finally { lock.releaseLock(); }
 }
 
 
@@ -125,6 +116,7 @@ function bundleExistingIdentifiedPTDeal_(context) {
     return {
       dealId: String(deal.PT_Deal_ID),
       action: 'Bundled existing identified deal',
+        appendPerformance: consumePTBundlingAppendPerformance_(),
       adjustmentTransactionId: '',
       bundledTransactionId: bundledTransactionId,
       issueId: '',
@@ -226,6 +218,7 @@ function bundleNewlyIdentifiedPTDeal_(context) {
     return {
       dealId: String(anonymousDeal.PT_Deal_ID),
       action: 'Identified and bundled ordered deal',
+        appendPerformance: consumePTBundlingAppendPerformance_(),
       adjustmentTransactionId: '',
       bundledTransactionId: bundledTransactionId,
       issueId: '',
@@ -295,26 +288,21 @@ function bundleNewlyIdentifiedPTDeal_(context) {
 }
 
 
-function postPTBundledTransaction_(
-  dealId,
-  gameId,
-  formNumber,
-  serialNumber,
-  notes
-) {
-  return postInventoryTransaction_({
-    effectiveDate: now_(),
-    inventoryType: 'PT',
-    productId: gameId,
-    itemId: dealId,
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    transactionType: 'Bundled',
-    quantityChange: 0,
-    unit: 'Deal',
-    source: 'PT Processing',
-    notes: notes
-  });
+function postPTBundledTransaction_(dealId, gameId, formNumber, serialNumber, notes) {
+  const perf = {startedAt:Date.now(), steps:[]};
+  PT_BUNDLING_APPEND_PERF_ = perf;
+  const idAt = Date.now();
+  const transactionId = generateId_('TRANSACTION', 'TX-', 7);
+  perf.steps.push({name:'Transaction ID', ms:Date.now()-idAt});
+  const timestamp = now_();
+  const record = buildInventoryTransactionRecord_({
+    effectiveDate:timestamp,inventoryType:'PT',productId:gameId,itemId:dealId,
+    formNumber:formNumber,serialNumber:serialNumber,transactionType:'Bundled',quantityChange:0,
+    unit:'Deal',source:'PT Processing',notes:notes
+  }, transactionId, timestamp);
+  appendRecords_('Transactions', [record]);
+  perf.totalMs = Date.now() - perf.startedAt;
+  return transactionId;
 }
 
 
@@ -371,6 +359,13 @@ function getPTReconciliationBootstrap(token) {
   };
 }
 
+
+
+function consumePTBundlingAppendPerformance_() {
+  const perf = PT_BUNDLING_APPEND_PERF_;
+  PT_BUNDLING_APPEND_PERF_ = null;
+  return perf;
+}
 
 function getPTDealsForForm(
   token,

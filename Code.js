@@ -155,6 +155,7 @@ function getHeaderMap_(sheet) {
  */
 const EXECUTION_RECORD_CACHE_ = Object.create(null);
 let EXECUTION_NATIVE_TABLE_CACHE_ = null;
+let PT_BUNDLING_APPEND_PERF_ = null;
 function invalidateRecordCache_(sheetName) {
   delete EXECUTION_RECORD_CACHE_[sheetName];
 }
@@ -242,13 +243,18 @@ function getRecords_(sheetName) {
         );
       }
     });
+    const appendPerf = sheetName === 'Transactions' ? PT_BUNDLING_APPEND_PERF_ : null;
+    let appendPerfAt = appendPerf ? Date.now() : 0;
+    if (appendPerf) appendPerf.steps.push({name:'Headers', ms:appendPerfAt-appendPerf.startedAt});
     const table = getNativeTableForSheet_(sheet);
+    if (appendPerf) { appendPerf.steps.push({name:'Native table metadata', ms:Date.now()-appendPerfAt}); appendPerfAt=Date.now(); }
     if (!table) {
       throw new Error(
         `No native Google Sheets Table was found on ${sheetName}.`
       );
     }
     const targetRows = reserveEmptyTableRows_(sheet, table, records.length);
+    if (appendPerf) { appendPerf.steps.push({name:'Reserve empty row', ms:Date.now()-appendPerfAt}); appendPerfAt=Date.now(); }
     const rowValues = records.map((record) => {
       return headers.map((header) => {
         return Object.prototype.hasOwnProperty.call(record, header)
@@ -275,7 +281,9 @@ function getRecords_(sheetName) {
         .setValues(rowValues.slice(groupStart, groupEnd));
       groupStart = groupEnd;
     }
+    if (appendPerf) { appendPerf.steps.push({name:'setValues', ms:Date.now()-appendPerfAt}); appendPerfAt=Date.now(); }
     SpreadsheetApp.flush();
+    if (appendPerf) { appendPerf.steps.push({name:'SpreadsheetApp.flush', ms:Date.now()-appendPerfAt}); appendPerfAt=Date.now(); }
     invalidateRecordCache_(sheetName);
     return targetRows;
   }

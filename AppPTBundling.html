@@ -66,6 +66,7 @@
       >
         Select PT Processing from the main menu to load games.
       </div>
+    <pre id="pt-bundle-performance" style="display:none;white-space:pre-wrap;margin-top:12px;padding:10px;border:1px solid #b9c5d5;border-radius:9px;background:#f7f9fc;font-size:12px"></pre>
 
       <div
         id="pt-bundle-match"
@@ -363,11 +364,13 @@
     );
 
     try {
+      const roundTripStartedAt = performance.now();
       const result = await server(
         'bundlePTDeal',
         formNumber,
         serialNumber
       );
+      const roundTripMs = Math.round(performance.now() - roundTripStartedAt);
 
       populatePTBundlingReceipt(result);
 
@@ -377,6 +380,29 @@
         'pt-bundle-status',
         `${result.action}. Inventory ID ${result.dealId}.`
       );
+
+      if (result.performance) {
+        const lines = [
+          'PT Bundling Performance ' + result.performance.version,
+          'Browser round trip: ' + roundTripMs + ' ms',
+          'Server measured: ' + result.performance.totalMs + ' ms',
+          'RPC / unmeasured: ' + Math.max(0, roundTripMs - result.performance.totalMs) + ' ms',
+          '',
+          'Server steps:'
+        ];
+        result.performance.steps.forEach((step) => {
+          lines.push('  ' + step.name + ': ' + step.ms + ' ms');
+        });
+        if (result.performance.append) {
+          lines.push('', 'Bundled transaction append: ' + result.performance.append.totalMs + ' ms');
+          result.performance.append.steps.forEach((step) => {
+            lines.push('  ' + step.name + ': ' + step.ms + ' ms');
+          });
+        }
+        const diagnostic = $('pt-bundle-performance');
+        diagnostic.textContent = lines.join('\n');
+        diagnostic.style.display = 'block';
+      }
 
       requestAnimationFrame(() => {
         window.print();
