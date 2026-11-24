@@ -1174,7 +1174,7 @@ const COMPLETED_PT_RANGES = [
   { sheetName: 'WS-07 Prog PTs', rows: [7, 8, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30] }
 ];
 
-const CARRYOVER_START_ROWS = [33, 50, 67];
+const CARRYOVER_START_ROWS = [33, 41, 49];
 
 
 function processSessionInventoryBeforeArchive_(context) {
@@ -1410,11 +1410,12 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
   const main = spreadsheet.getSheetByName('WS-06 PTs (Main)');
   if (!main) throw new Error('Required worksheet WS-06 PTs (Main) is missing.');
   const firstCarryoverRow = Math.min(...CARRYOVER_START_ROWS);
-  const lastCarryoverRow = Math.max(...CARRYOVER_START_ROWS) + 5;
+  const lastCarryoverRow = Math.max(...CARRYOVER_START_ROWS) + 4;
   const values = main.getRange(firstCarryoverRow, 4, lastCarryoverRow - firstCarryoverRow + 1, 3).getValues();
   CARRYOVER_START_ROWS.forEach((startRow) => {
     const start = values[startRow - firstCarryoverRow];
-    const sales = values[startRow + 5 - firstCarryoverRow];
+    const previousSales = values[startRow + 3 - firstCarryoverRow];
+    const currentSales = values[startRow + 4 - firstCarryoverRow];
     const serialNumber = normalizeText_(start[0]);
     const formNumber = normalizeFormNumber_(start[1]);
     if (!serialNumber || !formNumber) return;
@@ -1423,7 +1424,9 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
       formNumber: formNumber,
       serialNumber: serialNumber,
       ticketCount: Number(start[2] || 0),
-      totalSales: Number(sales[2] || 0),
+      totalSales:
+        Number(previousSales[1] || 0) +
+        Number(currentSales[1] || 0),
       location: `Carry-over block row ${startRow}`
     });
   });
@@ -1716,13 +1719,15 @@ function processCarryoverPTDealValues_(values, startRow, context, sourceFile) {
   return { transaction: true, issue: false };
 }
 function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
-  const values = sheet.getRange(startRow, 4, 6, 3).getValues();
+  const values = sheet.getRange(startRow, 4, 5, 3).getValues();
   return processCarryoverPTDealValues_(
     {
       serialNumber: values[0][0],
       formNumber: values[0][1],
       ticketCount: values[0][2],
-      totalSales: values[5][2]
+      totalSales:
+        Number(values[3][1] || 0) +
+        Number(values[4][1] || 0)
     },
     startRow,
     context,

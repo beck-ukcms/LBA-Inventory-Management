@@ -110,7 +110,7 @@ function bundlePTDeal(formNumber, serialNumber) {
     const bundlingDeals = getPTDealsForBundlingLookup_();
     const existingDeal = findPTDealForBundling_(
       bundlingDeals,
-      normalizedForm,
+      gameId,
       normalizedSerial
     );
     timer.mark('PT Deals lookup');
@@ -243,8 +243,7 @@ function bundleExistingIdentifiedPTDeal_(context) {
 function bundleNewlyIdentifiedPTDeal_(context) {
   const anonymousDeal = context.bundlingDeals.find((deal) => {
     return (
-      String(deal.PT_Game_ID) === String(context.game.PT_Game_ID) &&
-      normalizeFormNumber_(deal.Form_Number) === context.formNumber &&
+      String(deal.PT_Game_ID) === String(context.gameId) &&
       !normalizeText_(deal.Serial_Number) &&
       String(deal.Deal_Status) === 'Unbundled'
     );
@@ -252,6 +251,7 @@ function bundleNewlyIdentifiedPTDeal_(context) {
 
   if (anonymousDeal) {
     updateRecordRow_('PT_Deals', anonymousDeal._rowNumber, {
+      Form_Number: context.formNumber,
       Serial_Number: context.serialNumber,
       Deal_Status: 'Bundled',
       Bundled_Date: now_(),
@@ -556,11 +556,10 @@ function validatePTReconciliationObservations_(
       }
 
       if (
-        String(existingDeal.PT_Game_ID) !== String(gameId) ||
-        normalizeFormNumber_(existingDeal.Form_Number) !== formNumber
+        String(existingDeal.PT_Game_ID) !== String(gameId)
       ) {
         throw new Error(
-          `Deal ${dealId} does not belong to the selected game/form.`
+          `Deal ${dealId} does not belong to the selected PT game.`
         );
       }
     } else if (!serialNumber) {
@@ -581,7 +580,7 @@ function validatePTReconciliationObservations_(
       submittedSerials.add(serialKey);
 
       const conflict = findConflictingPTSerial_(
-        formNumber,
+        gameId,
         serialNumber,
         dealId
       );
@@ -640,12 +639,15 @@ function reconcileExistingPTDeal_(context) {
   const reconciliationNote = normalizeText_(observation.notes);
 
   const serialChanged = recordedSerial !== observedSerial;
+  const formChanged =
+    normalizeFormNumber_(existingDeal.Form_Number) !== context.formNumber;
   const statusChanged = recordedStatus !== observedStatus;
 
   const noteAdded = Boolean(reconciliationNote);
 
   if (
     !serialChanged &&
+    !formChanged &&
     !statusChanged &&
     !noteAdded
   ) {
@@ -682,6 +684,10 @@ function reconcileExistingPTDeal_(context) {
   });
 
   const rowUpdates = {};
+
+  if (formChanged) {
+    rowUpdates.Form_Number = context.formNumber;
+  }
 
   if (serialChanged) {
     rowUpdates.Serial_Number = observedSerial;

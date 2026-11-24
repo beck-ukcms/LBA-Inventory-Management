@@ -1,5 +1,5 @@
 ================================================================
-GIT COMMIT: bf22b934174956c7eb402673d97db3e29bb71892
+GIT COMMIT: 88505c5518213b9c01d08a1021d1b1dd636ddf76
 ================================================================
 
 ================================================================
@@ -3906,18 +3906,70 @@ const PT_GAME_TYPES = ['Daub', 'Horse Race', 'Under Seal', 'Mixed', 'Other'];
 function getPTCatalog_() {
   return getRecords_('PT_Catalog');
 }
+function getPTGameById_(gameId, options = {}) {
+  const normalizedGameId = normalizeText_(gameId);
+  if (!normalizedGameId) return null;
+  return getPTCatalog_().find((game) => {
+    if (String(game.PT_Game_ID) !== normalizedGameId) return false;
+    return options.includeInactive === true || isActiveCatalogRecord_(game);
+  }) || null;
+}
+
+function getPTGameForms_(game) {
+  if (!game) return [];
+  return [
+    normalizeFormNumber_(game.Primary_Form_Number),
+    ...splitAlternateForms_(game.Alternate_Form_Numbers)
+  ].filter(Boolean);
+}
+
+function resolvePTGameByForm_(formNumber, options = {}) {
+  const normalizedForm = normalizeFormNumber_(formNumber);
+  if (!normalizedForm) return null;
+  const game = getPTCatalog_().find((candidate) => {
+    if (options.includeInactive !== true && !isActiveCatalogRecord_(candidate)) {
+      return false;
+    }
+    return getPTGameForms_(candidate).includes(normalizedForm);
+  });
+  if (!game) return null;
+  return {
+    game: game,
+    gameId: String(game.PT_Game_ID),
+    enteredFormNumber: normalizedForm,
+    primaryFormNumber: normalizeFormNumber_(game.Primary_Form_Number),
+    forms: getPTGameForms_(game)
+  };
+}
+
+function getPrimaryPTFormNumber_(gameId, options = {}) {
+  const game = getPTGameById_(gameId, options);
+  if (!game) {
+    throw new Error(`PT Game ${gameId} was not found in PT_Catalog.`);
+  }
+  return normalizeFormNumber_(game.Primary_Form_Number);
+}
+
 function buildPTFormOptions_() {
   const options = [];
-  getPTCatalog_().filter(game => game.Active === true || String(game.Active).toLowerCase() === 'true').forEach(game => {
-    const forms = [normalizeFormNumber_(game.Primary_Form_Number), ...splitAlternateForms_(game.Alternate_Form_Numbers)].filter(Boolean);
-    forms.forEach(form => options.push({
-      gameId: String(game.PT_Game_ID),
-      gameName: String(game.Game_Name),
-      formNumber: form,
-      label: `${game.Game_Name} (${form})`,
-    }));
+  getPTCatalog_().filter(isActiveCatalogRecord_).forEach((game) => {
+    const gameId = String(game.PT_Game_ID);
+    const primaryFormNumber = normalizeFormNumber_(game.Primary_Form_Number);
+    getPTGameForms_(game).forEach((formNumber) => {
+      options.push({
+        gameId: gameId,
+        gameName: String(game.Game_Name),
+        formNumber: formNumber,
+        primaryFormNumber: primaryFormNumber,
+        isAlternate: formNumber !== primaryFormNumber,
+        label: `${game.Game_Name} (${formNumber})`
+      });
+    });
   });
-  return options.sort((a, b) => a.gameName.localeCompare(b.gameName) || a.formNumber.localeCompare(b.formNumber));
+  return options.sort((a, b) => {
+    return a.gameName.localeCompare(b.gameName) ||
+      a.formNumber.localeCompare(b.formNumber);
+  });
 }
 function assertFormAvailable_(formNumber, excludingGameId) {
   const form = normalizeFormNumber_(formNumber);
@@ -5494,19 +5546,13 @@ function getPaperCases_() {
  * Blank serial numbers deliberately do not identify a deal because multiple
  * anonymous deals of one Form Number are valid inventory records.
  */
-function findPTDeal_(formNumber, serialNumber) {
-  const normalizedFormNumber = normalizeFormNumber_(formNumber);
+function findPTDeal_(gameId, serialNumber) {
+  const normalizedGameId = normalizeText_(gameId);
   const normalizedSerialNumber = normalizeText_(serialNumber);
-
-  if (!normalizedSerialNumber) {
-    return null;
-  }
-
+  if (!normalizedGameId || !normalizedSerialNumber) return null;
   return getPTDeals_().find((deal) => {
-    return (
-      normalizeFormNumber_(deal.Form_Number) === normalizedFormNumber &&
-      normalizeText_(deal.Serial_Number) === normalizedSerialNumber
-    );
+    return String(deal.PT_Game_ID) === normalizedGameId &&
+      normalizeText_(deal.Serial_Number) === normalizedSerialNumber;
   }) || null;
 }
 
@@ -5521,47 +5567,70 @@ function createPTDeal_(data) {
   if (!PT_DEAL_STATUSES.includes(data.status)) {
     throw new Error(`Invalid PT Deal Status: ${data.status}`);
   }
-
-  const normalizedFormNumber = normalizeFormNumber_(data.formNumber);
+  const gameId = normalizeText_(data.gameId);
+  const primaryFormNumber = getPrimaryPTFormNumber_(gameId, {includeInactive:true});
   const normalizedSerialNumber = normalizeText_(data.serialNumber);
-
-  if (
-    normalizedSerialNumber &&
-    findPTDeal_(normalizedFormNumber, normalizedSerialNumber)
-  ) {
+  if (normalizedSerialNumber && findPTDeal_(gameId, normalizedSerialNumber)) {
     throw new Error(
-      `Deal ${normalizedFormNumber}/${normalizedSerialNumber} already exists.`
+      `Deal ${primaryFormNumber}/${normalizedSerialNumber} already exists.`
     );
   }
-
-  const dealId = generateId_(
-    'PT_DEAL',
-    'PTD-',
-    6
-  );
-
+  const dealId = generateId_('PT_DEAL', 'PTD-', 6);
   const receivedDate = data.receivedDate || now_();
-
   appendRecord_('PT_Deals', {
     PT_Deal_ID: dealId,
-    PT_Game_ID: data.gameId,
-    Form_Number: normalizedFormNumber,
+    PT_Game_ID: gameId,
+    Form_Number: primaryFormNumber,
     Serial_Number: normalizedSerialNumber,
     Received_Date: receivedDate,
     Deal_Status: data.status,
     Bundled_Date: data.status === 'Bundled' ? receivedDate : '',
-    Expended_Date: [
-      'Sold',
-      'Destroyed',
-      'Returned'
-    ].includes(data.status) ? receivedDate : '',
+    Expended_Date: ['Sold','Destroyed','Returned'].includes(data.status)
+      ? receivedDate : '',
     Expended_Session_ID: data.sessionId || '',
     Notes: data.notes || ''
   });
-
   return dealId;
 }
 
+
+function normalizePTFormNumbersV119c(token) {
+  requireAdmin_(token);
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+  try {
+    const primaryByGameId = new Map(
+      getPTCatalog_().map((game) => [
+        String(game.PT_Game_ID),
+        normalizeFormNumber_(game.Primary_Form_Number)
+      ])
+    );
+    const specifications = [
+      {sheetName:'PT_Deals', productField:'PT_Game_ID'},
+      {sheetName:'Transactions', productField:'Product_ID', ptOnly:true},
+      {sheetName:'Inventory_Issues', productField:'Product_ID', ptOnly:true},
+      {sheetName:'Reconciliation_Records', productField:'Product_ID', ptOnly:true}
+    ];
+    const changed = {};
+    specifications.forEach((specification) => {
+      const updates = [];
+      getRecords_(specification.sheetName).forEach((record) => {
+        if (specification.ptOnly && String(record.Inventory_Type) !== 'PT') return;
+        const primary = primaryByGameId.get(String(record[specification.productField]));
+        if (!primary || normalizeFormNumber_(record.Form_Number) === primary) return;
+        updates.push({
+          rowNumber: record._rowNumber,
+          updates: {Form_Number: primary}
+        });
+      });
+      updateRecordRows_(specification.sheetName, updates);
+      changed[specification.sheetName] = updates.length;
+    });
+    return {ok:true, version:'1.19c', changed:changed};
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 /**
  * Posts one authoritative inventory transaction.
@@ -5623,57 +5692,18 @@ function postInventoryTransaction_(data) {
  * checked once before the first deal or transaction is created.
  */
 function validateAnonymousPTStockAddition_(data) {
-  const quantity = integerOrThrow_(
-    data.quantity,
-    'PT quantity',
-    { allowZero: false }
-  );
-
+  const quantity = integerOrThrow_(data.quantity, 'PT quantity', {allowZero:false});
   const gameId = normalizeText_(data.gameId);
-  const formNumber = normalizeFormNumber_(data.formNumber);
-
-  if (!gameId) {
-    throw new Error('PT Game ID is required.');
+  if (!gameId) throw new Error('PT Game ID is required.');
+  const game = getPTGameById_(gameId);
+  if (!game) throw new Error(`PT Game ${gameId} was not found in PT_Catalog.`);
+  if (data.status && data.status !== 'Unbundled') {
+    throw new Error('Anonymous ordered PT stock must enter inventory as Unbundled.');
   }
-
-  if (!formNumber) {
-    throw new Error('PT Form Number is required.');
-  }
-
-  const game = getPTCatalog_().find((catalogRow) => {
-    return String(catalogRow.PT_Game_ID) === gameId;
-  });
-
-  if (!game) {
-    throw new Error(
-      `PT Game ${gameId} was not found in PT_Catalog.`
-    );
-  }
-
-  const validForms = [
-    normalizeFormNumber_(game.Primary_Form_Number),
-    ...splitAlternateForms_(game.Alternate_Form_Numbers)
-  ];
-
-  if (!validForms.includes(formNumber)) {
-    throw new Error(
-      `Form ${formNumber} is not assigned to ${game.Game_Name}.`
-    );
-  }
-
-  if (
-    data.status &&
-    data.status !== 'Unbundled'
-  ) {
-    throw new Error(
-      'Anonymous ordered PT stock must enter inventory as Unbundled.'
-    );
-  }
-
   return {
     quantity: quantity,
     gameId: gameId,
-    formNumber: formNumber
+    formNumber: normalizeFormNumber_(game.Primary_Form_Number)
   };
 }
 
@@ -5973,25 +6003,15 @@ function findPTDealById_(dealId) {
  * @param {string=} excludedDealId
  * @return {Object|null}
  */
-function findConflictingPTSerial_(
-  formNumber,
-  serialNumber,
-  excludedDealId
-) {
-  const normalizedFormNumber = normalizeFormNumber_(formNumber);
+function findConflictingPTSerial_(gameId, serialNumber, excludedDealId) {
+  const normalizedGameId = normalizeText_(gameId);
   const normalizedSerialNumber = normalizeText_(serialNumber);
   const normalizedExcludedDealId = normalizeText_(excludedDealId);
-
-  if (!normalizedSerialNumber) {
-    return null;
-  }
-
+  if (!normalizedSerialNumber) return null;
   return getPTDeals_().find((deal) => {
-    return (
-      String(deal.PT_Deal_ID) !== normalizedExcludedDealId &&
-      normalizeFormNumber_(deal.Form_Number) === normalizedFormNumber &&
-      normalizeText_(deal.Serial_Number) === normalizedSerialNumber
-    );
+    return String(deal.PT_Deal_ID) !== normalizedExcludedDealId &&
+      String(deal.PT_Game_ID) === normalizedGameId &&
+      normalizeText_(deal.Serial_Number) === normalizedSerialNumber;
   }) || null;
 }
 
@@ -6402,7 +6422,9 @@ function getInventoryIssues(token, statusFilter) {
         productId: productId,
         productLabel: productLabel,
         itemId: String(issue.Item_ID || ''),
-        formNumber: String(issue.Form_Number || ''),
+        formNumber: inventoryType === 'PT' && productId
+            ? normalizeFormNumber_((ptCatalog.find((row) => String(row.PT_Game_ID) === productId) || {}).Primary_Form_Number || issue.Form_Number)
+            : String(issue.Form_Number || ''),
         serialNumber: String(issue.Serial_Number || ''),
         sessionId: String(issue.Session_ID || ''),
         expectedQuantity: Number(issue.Expected_Quantity || 0),
@@ -6502,73 +6524,32 @@ FILE: Ordering.js
 
 function recordPTOrder(token, payload) {
   requireAdmin_(token);
-
   payload = payload || {};
-
   const gameId = normalizeText_(payload.gameId);
-  const formNumber = normalizeFormNumber_(payload.formNumber);
-
-  const catalogGame = getPTCatalog_().find((game) => {
-    return String(game.PT_Game_ID) === gameId;
-  });
-
+  const catalogGame = getPTGameById_(gameId);
   if (!catalogGame) {
-    throw new Error(
-      `PT Game ${gameId} was not found in PT_Catalog.`
-    );
+    throw new Error(`PT Game ${gameId} was not found in PT_Catalog.`);
   }
-
+  const primaryFormNumber = normalizeFormNumber_(catalogGame.Primary_Form_Number);
   const catalogDealsPerCase = integerOrThrow_(
     catalogGame.Deals_Per_Case,
     'Catalog Deals per Case',
-    { allowZero: false }
+    {allowZero:false}
   );
-
-  const validForms = [
-    normalizeFormNumber_(catalogGame.Primary_Form_Number),
-    ...splitAlternateForms_(catalogGame.Alternate_Form_Numbers)
-  ];
-
-  if (!validForms.includes(formNumber)) {
-    throw new Error(
-      `Form ${formNumber} is not assigned to ${catalogGame.Game_Name}.`
-    );
-  }
-
-  const casesOrdered = integerOrThrow_(
-    payload.cases,
-    'Cases Ordered'
-  );
-
-  const looseDeals = integerOrThrow_(
-    payload.looseDeals || 0,
-    'Loose Deals'
-  );
-
-  const quantity =
-    (casesOrdered * catalogDealsPerCase) +
-    looseDeals;
-
-  if (quantity <= 0) {
-    throw new Error(
-      'The order must add at least one PT deal.'
-    );
-  }
-
+  const casesOrdered = integerOrThrow_(payload.cases, 'Cases Ordered');
+  const looseDeals = integerOrThrow_(payload.looseDeals || 0, 'Loose Deals');
+  const quantity = casesOrdered * catalogDealsPerCase + looseDeals;
+  if (quantity <= 0) throw new Error('The order must add at least one PT deal.');
   const effectiveDate = payload.effectiveDate
-    ? new Date(`${payload.effectiveDate}T12:00:00`)
-    : now_();
-
+    ? new Date(`${payload.effectiveDate}T12:00:00`) : now_();
   const notes = normalizeText_(payload.notes) ||
     `${casesOrdered} case(s) and ${looseDeals} loose deal(s) ordered.`;
-
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000);
-
   try {
     const dealIds = createAnonymousPTStock_({
       gameId: gameId,
-      formNumber: formNumber,
+      formNumber: primaryFormNumber,
       quantity: quantity,
       status: 'Unbundled',
       effectiveDate: effectiveDate,
@@ -6576,13 +6557,13 @@ function recordPTOrder(token, payload) {
       source: 'Inventory Ordering',
       notes: notes
     });
-
     return {
       quantity: quantity,
       casesOrdered: casesOrdered,
       looseDeals: looseDeals,
       dealsPerCase: catalogDealsPerCase,
-      dealIds: dealIds
+      dealIds: dealIds,
+      formNumber: primaryFormNumber
     };
   } finally {
     lock.releaseLock();
@@ -6679,7 +6660,7 @@ function getPTBundlingGames() {
 }
 
 
-const PT_BUNDLING_PERF_VERSION = '1.19a';
+const PT_BUNDLING_PERF_VERSION = '1.19c';
 function createPTBundlingTimer_() {
   const startedAt = Date.now();
   let checkpointAt = startedAt;
@@ -6736,14 +6717,12 @@ function getPTDealsForBundlingLookup_() {
   }).filter((record) => normalizeText_(record.PT_Deal_ID));
 }
 
-function findPTDealForBundling_(deals, formNumber, serialNumber) {
-  const normalizedForm = normalizeFormNumber_(formNumber);
+function findPTDealForBundling_(deals, gameId, serialNumber) {
+  const normalizedGameId = normalizeText_(gameId);
   const normalizedSerial = normalizeText_(serialNumber);
   return deals.find((deal) => {
-    return (
-      normalizeFormNumber_(deal.Form_Number) === normalizedForm &&
-      normalizeText_(deal.Serial_Number) === normalizedSerial
-    );
+    return String(deal.PT_Game_ID) === normalizedGameId &&
+      normalizeText_(deal.Serial_Number) === normalizedSerial;
   }) || null;
 }
 function bundlePTDeal(formNumber, serialNumber) {
@@ -6752,12 +6731,14 @@ function bundlePTDeal(formNumber, serialNumber) {
   const normalizedSerial = normalizeText_(serialNumber);
   timer.mark('Normalize input');
   if (!normalizedForm || !normalizedSerial) throw new Error('Enter both a Form Number and Serial Number.');
-  const formOption = buildPTFormOptions_().find((option) => option.formNumber === normalizedForm);
+  const resolvedForm = resolvePTGameByForm_(normalizedForm);
   timer.mark('Catalog / form lookup');
-  if (!formOption) throw new Error(`Form Number ${normalizedForm} was not found.`);
-  const game = getPTCatalog_().find((row) => String(row.PT_Game_ID) === String(formOption.gameId));
+  if (!resolvedForm) throw new Error(`Form Number ${normalizedForm} was not found.`);
+  const game = resolvedForm.game;
+  const gameId = resolvedForm.gameId;
+  const primaryFormNumber = resolvedForm.primaryFormNumber;
   timer.mark('Game lookup');
-  if (!game) throw new Error(`Game ${formOption.gameId} was not found.`);
+  if (!game) throw new Error(`Game ${gameId} was not found.`);
   const lock = LockService.getDocumentLock();
   const lockAt = Date.now();
   lock.waitLock(30000);
@@ -6772,21 +6753,22 @@ function bundlePTDeal(formNumber, serialNumber) {
     timer.mark('PT Deals lookup');
     let result;
     if (existingDeal) {
-      result = bundleExistingIdentifiedPTDeal_({deal:existingDeal,game:game,formNumber:normalizedForm,serialNumber:normalizedSerial});
+      result = bundleExistingIdentifiedPTDeal_({deal:existingDeal,game:game,gameId:gameId,formNumber:primaryFormNumber,serialNumber:normalizedSerial});
     } else {
       result = bundleNewlyIdentifiedPTDeal_({
         game:game,
-        formNumber:normalizedForm,
+        gameId:gameId,
+        formNumber:primaryFormNumber,
         serialNumber:normalizedSerial,
         bundlingDeals:bundlingDeals
       });
     }
     timer.mark('Inventory writes + transaction');
-    const performance = timer.finish(`form=${normalizedForm}; action=${result.action}`);
+    const performance = timer.finish(`game=${gameId}; enteredForm=${normalizedForm}; action=${result.action}`);
     performance.append = result.appendPerformance || null;
     delete result.appendPerformance;
     return Object.assign(result, {
-      gameId:String(game.PT_Game_ID),gameName:String(game.Game_Name),formNumber:normalizedForm,
+      gameId:gameId,gameName:String(game.Game_Name),formNumber:primaryFormNumber,
       serialNumber:normalizedSerial,cards:String(game.Cards_Per_Deal || ''),payout:String(game.Payout_Per_Deal || ''),
       performance:performance
     });
@@ -7028,10 +7010,9 @@ function resolveOpenPTIssuesForDeal_(deal, resolutionNote) {
         String(issue.Item_ID) === String(deal.PT_Deal_ID);
 
       const sameSerial =
-        normalizeFormNumber_(issue.Form_Number) ===
-          normalizeFormNumber_(deal.Form_Number) &&
-        normalizeText_(issue.Serial_Number) ===
-          normalizeText_(deal.Serial_Number);
+          String(issue.Product_ID) === String(deal.PT_Game_ID) &&
+          normalizeText_(issue.Serial_Number) ===
+            normalizeText_(deal.Serial_Number);
 
       return (
         String(issue.Inventory_Type) === 'PT' &&
@@ -7080,45 +7061,27 @@ function consumePTBundlingAppendPerformance_() {
   return perf;
 }
 
-function getPTDealsForForm(
-  token,
-  gameId,
-  formNumber
-) {
+function getPTDealsForForm(token, gameId, formNumber) {
   requireAdmin_(token);
-
-  const normalizedFormNumber = normalizeFormNumber_(formNumber);
-
+  const game = getPTGameById_(gameId, {includeInactive:true});
+  if (!game) throw new Error('PT game was not found.');
+  const primaryFormNumber = normalizeFormNumber_(game.Primary_Form_Number);
   return getPTDeals_()
     .filter((deal) => {
-      return (
-        String(deal.PT_Game_ID) === String(gameId) &&
-        normalizeFormNumber_(deal.Form_Number) === normalizedFormNumber &&
-        ![
-          'Sold',
-          'Returned',
-          'Destroyed'
-        ].includes(String(deal.Deal_Status))
-      );
+      return String(deal.PT_Game_ID) === String(gameId) &&
+        !['Sold','Returned','Destroyed'].includes(String(deal.Deal_Status));
     })
-    .map((deal) => {
-      return {
-        dealId: String(deal.PT_Deal_ID),
-        serialNumber: normalizeText_(deal.Serial_Number),
-        recordedStatus: String(deal.Deal_Status),
-        notes: normalizeText_(deal.Notes)
-      };
-    })
-    .sort((firstDeal, secondDeal) => {
-      const firstSerial = firstDeal.serialNumber || firstDeal.dealId;
-      const secondSerial = secondDeal.serialNumber || secondDeal.dealId;
-
-      return firstSerial.localeCompare(
-        secondSerial,
-        undefined,
-        { numeric: true }
-      );
-    });
+    .map((deal) => ({
+      dealId: String(deal.PT_Deal_ID),
+      gameId: String(deal.PT_Game_ID),
+      formNumber: primaryFormNumber,
+      serialNumber: normalizeText_(deal.Serial_Number),
+      recordedStatus: String(deal.Deal_Status),
+      notes: normalizeText_(deal.Notes)
+    }))
+    .sort((a,b) => (a.serialNumber || a.dealId).localeCompare(
+      b.serialNumber || b.dealId, undefined, {numeric:true}
+    ));
 }
 
 
@@ -7128,12 +7091,12 @@ function savePTReconciliation(token, payload) {
   payload = payload || {};
 
   const gameId = normalizeText_(payload.gameId);
-  const formNumber = normalizeFormNumber_(payload.formNumber);
+  const selectedFormNumber = normalizeFormNumber_(payload.formNumber);
   const observations = Array.isArray(payload.deals)
     ? payload.deals
     : [];
 
-  if (!gameId || !formNumber) {
+  if (!gameId || !selectedFormNumber) {
     throw new Error('Select a PT game/form.');
   }
 
@@ -7141,6 +7104,9 @@ function savePTReconciliation(token, payload) {
     throw new Error('No deal observations were entered.');
   }
 
+  const game = getPTGameById_(gameId, {includeInactive:true});
+  if (!game) throw new Error('Selected PT game was not found.');
+  const formNumber = normalizeFormNumber_(game.Primary_Form_Number);
   const effectiveDate = payload.effectiveDate
     ? new Date(`${payload.effectiveDate}T12:00:00`)
     : now_();
@@ -7241,7 +7207,7 @@ function validatePTReconciliationObservations_(
     }
 
     if (serialNumber) {
-      const serialKey = `${formNumber}::${serialNumber}`;
+      const serialKey = `${gameId}::${serialNumber}`;
 
       if (submittedSerials.has(serialKey)) {
         throw new Error(
@@ -9491,10 +9457,15 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
       location: `Carry-over block row ${startRow}`
     });
   });
+  observations.forEach((observation) => {
+    const resolved = resolvePTGameByForm_(observation.formNumber, {includeInactive:true});
+    observation.gameId = resolved ? resolved.gameId : '';
+    observation.primaryFormNumber = resolved ? resolved.primaryFormNumber : observation.formNumber;
+  });
   const dealsByKey = new Map();
   getPTDeals_().forEach((deal) => {
     const serial = normalizeText_(deal.Serial_Number);
-    if (serial) dealsByKey.set(`${normalizeFormNumber_(deal.Form_Number)}::${serial}`, deal);
+    if (serial) dealsByKey.set(`${String(deal.PT_Game_ID)}::${serial}`, deal);
   });
   const plannedStatuses = new Map();
   const dealUpdates = [];
@@ -9502,11 +9473,13 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
   const issues = [];
   const balanceDeltas = new Map();
   observations.forEach((observation) => {
-    const deal = dealsByKey.get(`${observation.formNumber}::${observation.serialNumber}`);
+    const deal = observation.gameId
+      ? dealsByKey.get(`${observation.gameId}::${observation.serialNumber}`)
+      : null;
     if (!deal) {
       issues.push({
-        inventoryType: 'PT', issueType: 'Unknown Deal', productId: '', itemId: '',
-        formNumber: observation.formNumber, serialNumber: observation.serialNumber,
+        inventoryType: 'PT', issueType: 'Unknown Deal', productId: observation.gameId, itemId: '',
+        formNumber: observation.primaryFormNumber, serialNumber: observation.serialNumber,
         sessionId: context.sessionId, expectedQuantity: 0, reportedQuantity: 1,
         discrepancyAmount: 1,
         notes: `${observation.location}; source file ${sourceFile.getId()}.`
@@ -9522,14 +9495,14 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
     if (observation.kind === 'completed') {
       if (priorStatus === 'Sold') {
         issues.push({inventoryType:'PT', issueType:'Duplicate Sale', productId:deal.PT_Game_ID,
-          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          itemId:dealId, formNumber:observation.primaryFormNumber, serialNumber:observation.serialNumber,
           sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
           notes:observation.location + '.'});
         return;
       }
       if (!['Bundled', 'Open'].includes(priorStatus)) {
         issues.push({inventoryType:'PT', issueType:'Unavailable Deal', productId:deal.PT_Game_ID,
-          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          itemId:dealId, formNumber:observation.primaryFormNumber, serialNumber:observation.serialNumber,
           sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
           notes:`Deal status was ${priorStatus}; ${observation.location}.`});
         return;
@@ -9541,7 +9514,7 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
     } else {
       if (observation.totalSales > observation.ticketCount) {
         issues.push({inventoryType:'PT', issueType:'Unexpected Deal', productId:deal.PT_Game_ID,
-          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          itemId:dealId, formNumber:observation.primaryFormNumber, serialNumber:observation.serialNumber,
           sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
           notes:`Carry-over sales ${observation.totalSales} exceed ticket count ${observation.ticketCount}.`});
         return;
@@ -9550,7 +9523,7 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
       if (priorStatus === targetStatus) return;
       if (!['Bundled', 'Open'].includes(priorStatus)) {
         issues.push({inventoryType:'PT', issueType:'Unavailable Deal', productId:deal.PT_Game_ID,
-          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          itemId:dealId, formNumber:observation.primaryFormNumber, serialNumber:observation.serialNumber,
           sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
           notes:`Carry-over deal status was ${priorStatus}.`});
         return;
@@ -9569,7 +9542,7 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
     plannedStatuses.set(dealId, targetStatus);
     transactions.push({
       effectiveDate: context.date, inventoryType: 'PT', productId: deal.PT_Game_ID,
-      itemId: dealId, formNumber: observation.formNumber, serialNumber: observation.serialNumber,
+      itemId: dealId, formNumber: observation.primaryFormNumber, serialNumber: observation.serialNumber,
       transactionType: transactionType, quantityChange: quantityChange, unit: 'Deal',
       sessionId: context.sessionId, source: SESSION_PROCESSING_SOURCE, notes: notes
     });
@@ -9590,7 +9563,11 @@ function processCompletedPTDeal_(
   rowNumber,
   sourceFile
 ) {
-  const deal = findPTDeal_(formNumber, serialNumber);
+  const resolvedGame = resolvePTGameByForm_(formNumber, {includeInactive:true});
+  const canonicalFormNumber = resolvedGame ? resolvedGame.primaryFormNumber : formNumber;
+  const deal = resolvedGame
+    ? findPTDeal_(resolvedGame.gameId, serialNumber)
+    : null;
 
   if (!deal) {
     createPTPaperworkIssue_(
@@ -9651,7 +9628,7 @@ function processCompletedPTDeal_(
       inventoryType: 'PT',
       productId: deal.PT_Game_ID,
       itemId: deal.PT_Deal_ID,
-      formNumber: formNumber,
+      formNumber: canonicalFormNumber,
       serialNumber: serialNumber,
       transactionType: 'Sold',
     quantityChange: quantityChange,
@@ -9675,7 +9652,11 @@ function processCarryoverPTDealValues_(values, startRow, context, sourceFile) {
   }
 
   const totalSales = Number(values.totalSales || 0);
-  const deal = findPTDeal_(formNumber, serialNumber);
+  const resolvedGame = resolvePTGameByForm_(formNumber, {includeInactive:true});
+  const canonicalFormNumber = resolvedGame ? resolvedGame.primaryFormNumber : formNumber;
+  const deal = resolvedGame
+    ? findPTDeal_(resolvedGame.gameId, serialNumber)
+    : null;
 
   if (!deal) {
     createPTPaperworkIssue_(
@@ -9750,7 +9731,7 @@ function processCarryoverPTDealValues_(values, startRow, context, sourceFile) {
       inventoryType: 'PT',
       productId: deal.PT_Game_ID,
       itemId: deal.PT_Deal_ID,
-      formNumber: formNumber,
+      formNumber: canonicalFormNumber,
       serialNumber: serialNumber,
       transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
     quantityChange: quantityChange,
