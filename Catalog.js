@@ -3,18 +3,70 @@ const PT_GAME_TYPES = ['Daub', 'Horse Race', 'Under Seal', 'Mixed', 'Other'];
 function getPTCatalog_() {
   return getRecords_('PT_Catalog');
 }
+function getPTGameById_(gameId, options = {}) {
+  const normalizedGameId = normalizeText_(gameId);
+  if (!normalizedGameId) return null;
+  return getPTCatalog_().find((game) => {
+    if (String(game.PT_Game_ID) !== normalizedGameId) return false;
+    return options.includeInactive === true || isActiveCatalogRecord_(game);
+  }) || null;
+}
+
+function getPTGameForms_(game) {
+  if (!game) return [];
+  return [
+    normalizeFormNumber_(game.Primary_Form_Number),
+    ...splitAlternateForms_(game.Alternate_Form_Numbers)
+  ].filter(Boolean);
+}
+
+function resolvePTGameByForm_(formNumber, options = {}) {
+  const normalizedForm = normalizeFormNumber_(formNumber);
+  if (!normalizedForm) return null;
+  const game = getPTCatalog_().find((candidate) => {
+    if (options.includeInactive !== true && !isActiveCatalogRecord_(candidate)) {
+      return false;
+    }
+    return getPTGameForms_(candidate).includes(normalizedForm);
+  });
+  if (!game) return null;
+  return {
+    game: game,
+    gameId: String(game.PT_Game_ID),
+    enteredFormNumber: normalizedForm,
+    primaryFormNumber: normalizeFormNumber_(game.Primary_Form_Number),
+    forms: getPTGameForms_(game)
+  };
+}
+
+function getPrimaryPTFormNumber_(gameId, options = {}) {
+  const game = getPTGameById_(gameId, options);
+  if (!game) {
+    throw new Error(`PT Game ${gameId} was not found in PT_Catalog.`);
+  }
+  return normalizeFormNumber_(game.Primary_Form_Number);
+}
+
 function buildPTFormOptions_() {
   const options = [];
-  getPTCatalog_().filter(game => game.Active === true || String(game.Active).toLowerCase() === 'true').forEach(game => {
-    const forms = [normalizeFormNumber_(game.Primary_Form_Number), ...splitAlternateForms_(game.Alternate_Form_Numbers)].filter(Boolean);
-    forms.forEach(form => options.push({
-      gameId: String(game.PT_Game_ID),
-      gameName: String(game.Game_Name),
-      formNumber: form,
-      label: `${game.Game_Name} (${form})`,
-    }));
+  getPTCatalog_().filter(isActiveCatalogRecord_).forEach((game) => {
+    const gameId = String(game.PT_Game_ID);
+    const primaryFormNumber = normalizeFormNumber_(game.Primary_Form_Number);
+    getPTGameForms_(game).forEach((formNumber) => {
+      options.push({
+        gameId: gameId,
+        gameName: String(game.Game_Name),
+        formNumber: formNumber,
+        primaryFormNumber: primaryFormNumber,
+        isAlternate: formNumber !== primaryFormNumber,
+        label: `${game.Game_Name} (${formNumber})`
+      });
+    });
   });
-  return options.sort((a, b) => a.gameName.localeCompare(b.gameName) || a.formNumber.localeCompare(b.formNumber));
+  return options.sort((a, b) => {
+    return a.gameName.localeCompare(b.gameName) ||
+      a.formNumber.localeCompare(b.formNumber);
+  });
 }
 function assertFormAvailable_(formNumber, excludingGameId) {
   const form = normalizeFormNumber_(formNumber);

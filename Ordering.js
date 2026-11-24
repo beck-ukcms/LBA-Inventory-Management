@@ -12,73 +12,32 @@
 
 function recordPTOrder(token, payload) {
   requireAdmin_(token);
-
   payload = payload || {};
-
   const gameId = normalizeText_(payload.gameId);
-  const formNumber = normalizeFormNumber_(payload.formNumber);
-
-  const catalogGame = getPTCatalog_().find((game) => {
-    return String(game.PT_Game_ID) === gameId;
-  });
-
+  const catalogGame = getPTGameById_(gameId);
   if (!catalogGame) {
-    throw new Error(
-      `PT Game ${gameId} was not found in PT_Catalog.`
-    );
+    throw new Error(`PT Game ${gameId} was not found in PT_Catalog.`);
   }
-
+  const primaryFormNumber = normalizeFormNumber_(catalogGame.Primary_Form_Number);
   const catalogDealsPerCase = integerOrThrow_(
     catalogGame.Deals_Per_Case,
     'Catalog Deals per Case',
-    { allowZero: false }
+    {allowZero:false}
   );
-
-  const validForms = [
-    normalizeFormNumber_(catalogGame.Primary_Form_Number),
-    ...splitAlternateForms_(catalogGame.Alternate_Form_Numbers)
-  ];
-
-  if (!validForms.includes(formNumber)) {
-    throw new Error(
-      `Form ${formNumber} is not assigned to ${catalogGame.Game_Name}.`
-    );
-  }
-
-  const casesOrdered = integerOrThrow_(
-    payload.cases,
-    'Cases Ordered'
-  );
-
-  const looseDeals = integerOrThrow_(
-    payload.looseDeals || 0,
-    'Loose Deals'
-  );
-
-  const quantity =
-    (casesOrdered * catalogDealsPerCase) +
-    looseDeals;
-
-  if (quantity <= 0) {
-    throw new Error(
-      'The order must add at least one PT deal.'
-    );
-  }
-
+  const casesOrdered = integerOrThrow_(payload.cases, 'Cases Ordered');
+  const looseDeals = integerOrThrow_(payload.looseDeals || 0, 'Loose Deals');
+  const quantity = casesOrdered * catalogDealsPerCase + looseDeals;
+  if (quantity <= 0) throw new Error('The order must add at least one PT deal.');
   const effectiveDate = payload.effectiveDate
-    ? new Date(`${payload.effectiveDate}T12:00:00`)
-    : now_();
-
+    ? new Date(`${payload.effectiveDate}T12:00:00`) : now_();
   const notes = normalizeText_(payload.notes) ||
     `${casesOrdered} case(s) and ${looseDeals} loose deal(s) ordered.`;
-
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000);
-
   try {
     const dealIds = createAnonymousPTStock_({
       gameId: gameId,
-      formNumber: formNumber,
+      formNumber: primaryFormNumber,
       quantity: quantity,
       status: 'Unbundled',
       effectiveDate: effectiveDate,
@@ -86,13 +45,13 @@ function recordPTOrder(token, payload) {
       source: 'Inventory Ordering',
       notes: notes
     });
-
     return {
       quantity: quantity,
       casesOrdered: casesOrdered,
       looseDeals: looseDeals,
       dealsPerCase: catalogDealsPerCase,
-      dealIds: dealIds
+      dealIds: dealIds,
+      formNumber: primaryFormNumber
     };
   } finally {
     lock.releaseLock();

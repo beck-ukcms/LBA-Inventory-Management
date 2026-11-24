@@ -1427,10 +1427,15 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
       location: `Carry-over block row ${startRow}`
     });
   });
+  observations.forEach((observation) => {
+    const resolved = resolvePTGameByForm_(observation.formNumber, {includeInactive:true});
+    observation.gameId = resolved ? resolved.gameId : '';
+    observation.primaryFormNumber = resolved ? resolved.primaryFormNumber : observation.formNumber;
+  });
   const dealsByKey = new Map();
   getPTDeals_().forEach((deal) => {
     const serial = normalizeText_(deal.Serial_Number);
-    if (serial) dealsByKey.set(`${normalizeFormNumber_(deal.Form_Number)}::${serial}`, deal);
+    if (serial) dealsByKey.set(`${String(deal.PT_Game_ID)}::${serial}`, deal);
   });
   const plannedStatuses = new Map();
   const dealUpdates = [];
@@ -1438,11 +1443,13 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
   const issues = [];
   const balanceDeltas = new Map();
   observations.forEach((observation) => {
-    const deal = dealsByKey.get(`${observation.formNumber}::${observation.serialNumber}`);
+    const deal = observation.gameId
+      ? dealsByKey.get(`${observation.gameId}::${observation.serialNumber}`)
+      : null;
     if (!deal) {
       issues.push({
-        inventoryType: 'PT', issueType: 'Unknown Deal', productId: '', itemId: '',
-        formNumber: observation.formNumber, serialNumber: observation.serialNumber,
+        inventoryType: 'PT', issueType: 'Unknown Deal', productId: observation.gameId, itemId: '',
+        formNumber: observation.primaryFormNumber, serialNumber: observation.serialNumber,
         sessionId: context.sessionId, expectedQuantity: 0, reportedQuantity: 1,
         discrepancyAmount: 1,
         notes: `${observation.location}; source file ${sourceFile.getId()}.`
@@ -1458,14 +1465,14 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
     if (observation.kind === 'completed') {
       if (priorStatus === 'Sold') {
         issues.push({inventoryType:'PT', issueType:'Duplicate Sale', productId:deal.PT_Game_ID,
-          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          itemId:dealId, formNumber:observation.primaryFormNumber, serialNumber:observation.serialNumber,
           sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
           notes:observation.location + '.'});
         return;
       }
       if (!['Bundled', 'Open'].includes(priorStatus)) {
         issues.push({inventoryType:'PT', issueType:'Unavailable Deal', productId:deal.PT_Game_ID,
-          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          itemId:dealId, formNumber:observation.primaryFormNumber, serialNumber:observation.serialNumber,
           sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
           notes:`Deal status was ${priorStatus}; ${observation.location}.`});
         return;
@@ -1477,7 +1484,7 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
     } else {
       if (observation.totalSales > observation.ticketCount) {
         issues.push({inventoryType:'PT', issueType:'Unexpected Deal', productId:deal.PT_Game_ID,
-          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          itemId:dealId, formNumber:observation.primaryFormNumber, serialNumber:observation.serialNumber,
           sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
           notes:`Carry-over sales ${observation.totalSales} exceed ticket count ${observation.ticketCount}.`});
         return;
@@ -1486,7 +1493,7 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
       if (priorStatus === targetStatus) return;
       if (!['Bundled', 'Open'].includes(priorStatus)) {
         issues.push({inventoryType:'PT', issueType:'Unavailable Deal', productId:deal.PT_Game_ID,
-          itemId:dealId, formNumber:observation.formNumber, serialNumber:observation.serialNumber,
+          itemId:dealId, formNumber:observation.primaryFormNumber, serialNumber:observation.serialNumber,
           sessionId:context.sessionId, expectedQuantity:1, reportedQuantity:1, discrepancyAmount:0,
           notes:`Carry-over deal status was ${priorStatus}.`});
         return;
@@ -1505,7 +1512,7 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
     plannedStatuses.set(dealId, targetStatus);
     transactions.push({
       effectiveDate: context.date, inventoryType: 'PT', productId: deal.PT_Game_ID,
-      itemId: dealId, formNumber: observation.formNumber, serialNumber: observation.serialNumber,
+      itemId: dealId, formNumber: observation.primaryFormNumber, serialNumber: observation.serialNumber,
       transactionType: transactionType, quantityChange: quantityChange, unit: 'Deal',
       sessionId: context.sessionId, source: SESSION_PROCESSING_SOURCE, notes: notes
     });
@@ -1526,7 +1533,11 @@ function processCompletedPTDeal_(
   rowNumber,
   sourceFile
 ) {
-  const deal = findPTDeal_(formNumber, serialNumber);
+  const resolvedGame = resolvePTGameByForm_(formNumber, {includeInactive:true});
+  const canonicalFormNumber = resolvedGame ? resolvedGame.primaryFormNumber : formNumber;
+  const deal = resolvedGame
+    ? findPTDeal_(resolvedGame.gameId, serialNumber)
+    : null;
 
   if (!deal) {
     createPTPaperworkIssue_(
@@ -1587,7 +1598,7 @@ function processCompletedPTDeal_(
       inventoryType: 'PT',
       productId: deal.PT_Game_ID,
       itemId: deal.PT_Deal_ID,
-      formNumber: formNumber,
+      formNumber: canonicalFormNumber,
       serialNumber: serialNumber,
       transactionType: 'Sold',
     quantityChange: quantityChange,
@@ -1611,7 +1622,11 @@ function processCarryoverPTDealValues_(values, startRow, context, sourceFile) {
   }
 
   const totalSales = Number(values.totalSales || 0);
-  const deal = findPTDeal_(formNumber, serialNumber);
+  const resolvedGame = resolvePTGameByForm_(formNumber, {includeInactive:true});
+  const canonicalFormNumber = resolvedGame ? resolvedGame.primaryFormNumber : formNumber;
+  const deal = resolvedGame
+    ? findPTDeal_(resolvedGame.gameId, serialNumber)
+    : null;
 
   if (!deal) {
     createPTPaperworkIssue_(
@@ -1686,7 +1701,7 @@ function processCarryoverPTDealValues_(values, startRow, context, sourceFile) {
       inventoryType: 'PT',
       productId: deal.PT_Game_ID,
       itemId: deal.PT_Deal_ID,
-      formNumber: formNumber,
+      formNumber: canonicalFormNumber,
       serialNumber: serialNumber,
       transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
     quantityChange: quantityChange,

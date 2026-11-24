@@ -66,7 +66,9 @@ function getInventoryIssues(token, statusFilter) {
         productId: productId,
         productLabel: productLabel,
         itemId: String(issue.Item_ID || ''),
-        formNumber: String(issue.Form_Number || ''),
+        formNumber: inventoryType === 'PT' && productId
+            ? normalizeFormNumber_((ptCatalog.find((row) => String(row.PT_Game_ID) === productId) || {}).Primary_Form_Number || issue.Form_Number)
+            : String(issue.Form_Number || ''),
         serialNumber: String(issue.Serial_Number || ''),
         sessionId: String(issue.Session_ID || ''),
         expectedQuantity: Number(issue.Expected_Quantity || 0),

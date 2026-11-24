@@ -23,7 +23,7 @@ function getPTBundlingGames() {
 }
 
 
-const PT_BUNDLING_PERF_VERSION = '1.19a';
+const PT_BUNDLING_PERF_VERSION = '1.19c';
 function createPTBundlingTimer_() {
   const startedAt = Date.now();
   let checkpointAt = startedAt;
@@ -80,14 +80,12 @@ function getPTDealsForBundlingLookup_() {
   }).filter((record) => normalizeText_(record.PT_Deal_ID));
 }
 
-function findPTDealForBundling_(deals, formNumber, serialNumber) {
-  const normalizedForm = normalizeFormNumber_(formNumber);
+function findPTDealForBundling_(deals, gameId, serialNumber) {
+  const normalizedGameId = normalizeText_(gameId);
   const normalizedSerial = normalizeText_(serialNumber);
   return deals.find((deal) => {
-    return (
-      normalizeFormNumber_(deal.Form_Number) === normalizedForm &&
-      normalizeText_(deal.Serial_Number) === normalizedSerial
-    );
+    return String(deal.PT_Game_ID) === normalizedGameId &&
+      normalizeText_(deal.Serial_Number) === normalizedSerial;
   }) || null;
 }
 function bundlePTDeal(formNumber, serialNumber) {
@@ -96,12 +94,14 @@ function bundlePTDeal(formNumber, serialNumber) {
   const normalizedSerial = normalizeText_(serialNumber);
   timer.mark('Normalize input');
   if (!normalizedForm || !normalizedSerial) throw new Error('Enter both a Form Number and Serial Number.');
-  const formOption = buildPTFormOptions_().find((option) => option.formNumber === normalizedForm);
+  const resolvedForm = resolvePTGameByForm_(normalizedForm);
   timer.mark('Catalog / form lookup');
-  if (!formOption) throw new Error(`Form Number ${normalizedForm} was not found.`);
-  const game = getPTCatalog_().find((row) => String(row.PT_Game_ID) === String(formOption.gameId));
+  if (!resolvedForm) throw new Error(`Form Number ${normalizedForm} was not found.`);
+  const game = resolvedForm.game;
+  const gameId = resolvedForm.gameId;
+  const primaryFormNumber = resolvedForm.primaryFormNumber;
   timer.mark('Game lookup');
-  if (!game) throw new Error(`Game ${formOption.gameId} was not found.`);
+  if (!game) throw new Error(`Game ${gameId} was not found.`);
   const lock = LockService.getDocumentLock();
   const lockAt = Date.now();
   lock.waitLock(30000);
@@ -116,21 +116,22 @@ function bundlePTDeal(formNumber, serialNumber) {
     timer.mark('PT Deals lookup');
     let result;
     if (existingDeal) {
-      result = bundleExistingIdentifiedPTDeal_({deal:existingDeal,game:game,formNumber:normalizedForm,serialNumber:normalizedSerial});
+      result = bundleExistingIdentifiedPTDeal_({deal:existingDeal,game:game,gameId:gameId,formNumber:primaryFormNumber,serialNumber:normalizedSerial});
     } else {
       result = bundleNewlyIdentifiedPTDeal_({
         game:game,
-        formNumber:normalizedForm,
+        gameId:gameId,
+        formNumber:primaryFormNumber,
         serialNumber:normalizedSerial,
         bundlingDeals:bundlingDeals
       });
     }
     timer.mark('Inventory writes + transaction');
-    const performance = timer.finish(`form=${normalizedForm}; action=${result.action}`);
+    const performance = timer.finish(`game=${gameId}; enteredForm=${normalizedForm}; action=${result.action}`);
     performance.append = result.appendPerformance || null;
     delete result.appendPerformance;
     return Object.assign(result, {
-      gameId:String(game.PT_Game_ID),gameName:String(game.Game_Name),formNumber:normalizedForm,
+      gameId:gameId,gameName:String(game.Game_Name),formNumber:primaryFormNumber,
       serialNumber:normalizedSerial,cards:String(game.Cards_Per_Deal || ''),payout:String(game.Payout_Per_Deal || ''),
       performance:performance
     });
@@ -372,10 +373,9 @@ function resolveOpenPTIssuesForDeal_(deal, resolutionNote) {
         String(issue.Item_ID) === String(deal.PT_Deal_ID);
 
       const sameSerial =
-        normalizeFormNumber_(issue.Form_Number) ===
-          normalizeFormNumber_(deal.Form_Number) &&
-        normalizeText_(issue.Serial_Number) ===
-          normalizeText_(deal.Serial_Number);
+          String(issue.Product_ID) === String(deal.PT_Game_ID) &&
+          normalizeText_(issue.Serial_Number) ===
+            normalizeText_(deal.Serial_Number);
 
       return (
         String(issue.Inventory_Type) === 'PT' &&
@@ -424,45 +424,27 @@ function consumePTBundlingAppendPerformance_() {
   return perf;
 }
 
-function getPTDealsForForm(
-  token,
-  gameId,
-  formNumber
-) {
+function getPTDealsForForm(token, gameId, formNumber) {
   requireAdmin_(token);
-
-  const normalizedFormNumber = normalizeFormNumber_(formNumber);
-
+  const game = getPTGameById_(gameId, {includeInactive:true});
+  if (!game) throw new Error('PT game was not found.');
+  const primaryFormNumber = normalizeFormNumber_(game.Primary_Form_Number);
   return getPTDeals_()
     .filter((deal) => {
-      return (
-        String(deal.PT_Game_ID) === String(gameId) &&
-        normalizeFormNumber_(deal.Form_Number) === normalizedFormNumber &&
-        ![
-          'Sold',
-          'Returned',
-          'Destroyed'
-        ].includes(String(deal.Deal_Status))
-      );
+      return String(deal.PT_Game_ID) === String(gameId) &&
+        !['Sold','Returned','Destroyed'].includes(String(deal.Deal_Status));
     })
-    .map((deal) => {
-      return {
-        dealId: String(deal.PT_Deal_ID),
-        serialNumber: normalizeText_(deal.Serial_Number),
-        recordedStatus: String(deal.Deal_Status),
-        notes: normalizeText_(deal.Notes)
-      };
-    })
-    .sort((firstDeal, secondDeal) => {
-      const firstSerial = firstDeal.serialNumber || firstDeal.dealId;
-      const secondSerial = secondDeal.serialNumber || secondDeal.dealId;
-
-      return firstSerial.localeCompare(
-        secondSerial,
-        undefined,
-        { numeric: true }
-      );
-    });
+    .map((deal) => ({
+      dealId: String(deal.PT_Deal_ID),
+      gameId: String(deal.PT_Game_ID),
+      formNumber: primaryFormNumber,
+      serialNumber: normalizeText_(deal.Serial_Number),
+      recordedStatus: String(deal.Deal_Status),
+      notes: normalizeText_(deal.Notes)
+    }))
+    .sort((a,b) => (a.serialNumber || a.dealId).localeCompare(
+      b.serialNumber || b.dealId, undefined, {numeric:true}
+    ));
 }
 
 
@@ -472,12 +454,12 @@ function savePTReconciliation(token, payload) {
   payload = payload || {};
 
   const gameId = normalizeText_(payload.gameId);
-  const formNumber = normalizeFormNumber_(payload.formNumber);
+  const selectedFormNumber = normalizeFormNumber_(payload.formNumber);
   const observations = Array.isArray(payload.deals)
     ? payload.deals
     : [];
 
-  if (!gameId || !formNumber) {
+  if (!gameId || !selectedFormNumber) {
     throw new Error('Select a PT game/form.');
   }
 
@@ -485,6 +467,9 @@ function savePTReconciliation(token, payload) {
     throw new Error('No deal observations were entered.');
   }
 
+  const game = getPTGameById_(gameId, {includeInactive:true});
+  if (!game) throw new Error('Selected PT game was not found.');
+  const formNumber = normalizeFormNumber_(game.Primary_Form_Number);
   const effectiveDate = payload.effectiveDate
     ? new Date(`${payload.effectiveDate}T12:00:00`)
     : now_();
@@ -585,7 +570,7 @@ function validatePTReconciliationObservations_(
     }
 
     if (serialNumber) {
-      const serialKey = `${formNumber}::${serialNumber}`;
+      const serialKey = `${gameId}::${serialNumber}`;
 
       if (submittedSerials.has(serialKey)) {
         throw new Error(
