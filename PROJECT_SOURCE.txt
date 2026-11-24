@@ -1,12 +1,17 @@
 ================================================================
-GIT COMMIT: e8605e34a57edd23bc267b77993ee4f908ecc970
+GIT COMMIT: 7fe1dda295ab4c0be66adaccdc73e7368c843597
 ================================================================
 
 ================================================================
 FILE: Admin.js
 ================================================================
 
-/** Admin authentication and protected admin endpoints. */
+/**
+ * Admin.js
+ * Administrative authentication and protected endpoints.
+ * Scope: Creates, validates, refreshes, and ends administrator sessions; exposes protected maintenance entry points.
+ * Current as of v1.20.
+ */
 const ADMIN_TOKEN_TTL_SECONDS = 1800;
 
 function authenticateAdmin(code) {
@@ -40,6 +45,12 @@ function runSchemaValidationFromAdmin(token) {
 FILE: AppAdminMain.html
 ================================================================
 
+<!--
+  AppAdminMain.html
+  Administration navigation interface.
+  Scope: Provides protected links to ordering, reconciliation, catalog, issue, and schema-maintenance workflows.
+  Current as of v1.20.
+-->
 <section
   id="admin-screen"
   class="screen"
@@ -147,6 +158,12 @@ FILE: AppAdminMain.html
 FILE: AppCatalogMaintenance.html
 ================================================================
 
+<!--
+  AppCatalogMaintenance.html
+  Catalog maintenance interface.
+  Scope: Displays and edits PT and Paper catalog records.
+  Current as of v1.20.
+-->
 <section id="catalog-maintenance-screen" class="screen">
  <div class="section-title"><div><h2>Catalog Maintenance</h2><p class="muted">Edit active and inactive PT and Paper products.</p></div><button class="btn secondary" type="button" onclick="showScreen('admin-screen')">Back</button></div>
  <div class="panel"><div class="actions"><button id="cat-pt-tab" class="btn" type="button" onclick="showCatalogType('pt')">Pulltabs</button><button id="cat-paper-tab" class="btn secondary" type="button" onclick="showCatalogType('paper')">Paper</button></div><div id="catalog-status" class="status"></div></div>
@@ -213,6 +230,12 @@ FILE: AppCatalogMaintenance.html
 FILE: AppCommon.html
 ================================================================
 
+<!--
+  AppCommon.html
+  Shared web application styles and browser utilities.
+  Scope: Defines the common visual system, screen/modal behavior, server RPC wrapper, validation helpers, and option rendering.
+  Current as of v1.20.
+-->
 <style>
   :root {
     --navy: #08275a;
@@ -701,6 +724,12 @@ function escapeHtml(value) {
 FILE: AppDashboard.html
 ================================================================
 
+<!--
+  AppDashboard.html
+  Inventory dashboard interface.
+  Scope: Displays PT and Paper stock health, rolling usage, and the consolidated order workflow.
+  Current as of v1.20.
+-->
 <section id="dashboard-screen" class="screen">
   <div class="section-title"><div><h2>Inventory Dashboard</h2><p class="muted">Active products, rolling sales, and weekly ordering.</p></div><button class="btn secondary" type="button" onclick="showScreen('home-screen')">Main Menu</button></div>
   <div id="dashboard-status" class="status"></div>
@@ -764,6 +793,12 @@ async function submitDashboardOrder(){try{const result=await server('placeDashbo
 FILE: AppInventoryIssues.html
 ================================================================
 
+<!--
+  AppInventoryIssues.html
+  Inventory Issues interface.
+  Scope: Lists, reviews, filters, and resolves recorded inventory exceptions.
+  Current as of v1.20.
+-->
 <section id="inventory-issues-screen" class="screen">
   <div class="section-title">
     <div>
@@ -1068,6 +1103,12 @@ async function loadInventoryIssues(filter) {
 FILE: AppOrdering.html
 ================================================================
 
+<!--
+  AppOrdering.html
+  Inventory ordering interface.
+  Scope: Records PT and Paper orders and supports creation of new Paper catalog types.
+  Current as of v1.20.
+-->
 <section
   id="ordering-screen"
   class="screen"
@@ -1894,6 +1935,12 @@ $('order-paper-type').value = result.paperId;
 FILE: AppPTBundling.html
 ================================================================
 
+<!--
+  AppPTBundling.html
+  PT bundling and receipt-printing interface.
+  Scope: Validates scan input, records bundles, displays performance diagnostics, and prints PT receipts.
+  Current as of v1.20.
+-->
 <section
   id="pt-bundling-screen"
   class="screen"
@@ -2386,6 +2433,12 @@ FILE: AppPTBundling.html
 FILE: AppPTReconciliation.html
 ================================================================
 
+<!--
+  AppPTReconciliation.html
+  PT reconciliation interface.
+  Scope: Reviews current deals by PT game, records physical observations, and supports PT game/form maintenance.
+  Current as of v1.20.
+-->
 <section
   id="pt-reconciliation-screen"
   class="screen"
@@ -3121,6 +3174,12 @@ FILE: AppPTReconciliation.html
 FILE: AppPaperReconciliation.html
 ================================================================
 
+<!--
+  AppPaperReconciliation.html
+  Paper reconciliation interface.
+  Scope: Reviews Paper cases and records physical serial, pack-count, and status observations.
+  Current as of v1.20.
+-->
 <section
   id="paper-reconciliation-screen"
   class="screen"
@@ -3520,6 +3579,12 @@ FILE: AppPaperReconciliation.html
 FILE: AppPaperworkManagement.html
 ================================================================
 
+<!--
+  AppPaperworkManagement.html
+  Session paperwork management interface.
+  Scope: Creates session paperwork, manages the daily trigger, and processes and archives completed sessions.
+  Current as of v1.20.
+-->
 <section id="paperwork-management-screen" class="screen">
   <div class="section-title">
     <div>
@@ -3874,6 +3939,12 @@ async function archiveSelectedPaperworkFromScreen() {
 FILE: AppReconciliation.html
 ================================================================
 
+<!--
+  AppReconciliation.html
+  Reconciliation navigation interface.
+  Scope: Routes administrators to PT or Paper reconciliation workspaces.
+  Current as of v1.20.
+-->
 <section id="reconciliation-screen" class="screen"><div class="section-title"><div><h2>Reconciliation</h2><p class="muted">PT and Paper physical inventory.</p></div><button class="btn secondary" onclick="showScreen('admin-screen')">Back</button></div><div class="panel"><div class="actions"><button class="btn" onclick="openPTReconciliation()">Pulltabs</button><button class="btn" onclick="openPaperReconciliation()">Paper</button></div><p class="muted">Choose an inventory type to open its reconciliation workspace.</p></div></section>
 <script>function openReconciliation(){showScreen('reconciliation-screen')}</script>
 
@@ -3882,7 +3953,12 @@ FILE: AppReconciliation.html
 FILE: Catalog.js
 ================================================================
 
-/** PT and Paper catalog operations. Only this module writes catalog rows. */
+/**
+ * Catalog.js
+ * PT and Paper catalog management.
+ * Scope: Resolves PT form aliases to PT_Game_ID and creates, updates, and serves catalog records.
+ * Current as of v1.20.
+ */
 const PT_GAME_TYPES = ['Daub', 'Horse Race', 'Under Seal', 'Mixed', 'Other'];
 function getPTCatalog_() {
   return getRecords_('PT_Catalog');
@@ -4305,22 +4381,11 @@ FILE: Code.js
 ================================================================
 
 /**
- * Code.gs
- * LBA Bingo Inventory Management
- * Version 1.8
- *
- * Common application infrastructure:
- * - Web-app routing
- * - HTML includes
- * - Spreadsheet access
- * - Generic record reading
- * - Native-table-aware record appending
- * - Generic row updates
- * - ID generation
- * - Common validation and normalization utilities
+ * Code.js
+ * Shared application infrastructure.
+ * Scope: Provides web routing, spreadsheet access, structural caching, record I/O, ID generation, validation, and normalization.
+ * Current as of v1.20.
  */
-
-
 /**
  * Serves the main Inventory Management application.
  */
@@ -4419,7 +4484,7 @@ function getSheetOrThrow_(sheetName) {
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @return {Object}
  */
-const INVENTORY_STRUCTURE_CACHE_VERSION_ = 'v119b-1';
+const INVENTORY_STRUCTURE_CACHE_VERSION_ = 'v120-1';
 const INVENTORY_STRUCTURE_CACHE_TTL_SECONDS_ = 21600;
 
 function getInventoryStructureCache_() {
@@ -4438,6 +4503,18 @@ function inventoryStructureCacheKey_(kind, sheet) {
     getInventorySpreadsheet_().getId(),
     sheet.getSheetId()
   ].join(':');
+}
+
+function invalidateInventoryHeaderCache_(sheet) {
+  const cache = getInventoryStructureCache_();
+  if (!cache) return;
+  try {
+    cache.remove(
+      inventoryStructureCacheKey_('HEADERS', sheet)
+    );
+  } catch (error) {
+    // Cache failure must never block schema work.
+  }
 }
 
 function cacheInventoryStructureValue_(key, value) {
@@ -4465,11 +4542,15 @@ function readInventoryStructureCache_(key) {
   }
 }
 
-function getHeaderMap_(sheet) {
+function getSheetHeaders_(sheet) {
   const cacheKey = inventoryStructureCacheKey_('HEADERS', sheet);
   const cached = readInventoryStructureCache_(cacheKey);
-  if (cached && cached.headerMap) {
-    return cached.headerMap;
+  if (
+    cached &&
+    Array.isArray(cached.headers) &&
+    cached.headers.length
+  ) {
+    return cached.headers.slice();
   }
   const lastColumn = sheet.getLastColumn();
   if (lastColumn < 1) {
@@ -4478,13 +4559,25 @@ function getHeaderMap_(sheet) {
   const headers = sheet
     .getRange(1, 1, 1, lastColumn)
     .getDisplayValues()[0];
-  const headerMap = Object.fromEntries(
+  cacheInventoryStructureValue_(cacheKey, {
+    headers: headers,
+    headerMap: Object.fromEntries(
+      headers.map((header, index) => [header, index])
+    )
+  });
+  return headers.slice();
+}
+
+function getHeaderMap_(sheet) {
+  const cacheKey = inventoryStructureCacheKey_('HEADERS', sheet);
+  const cached = readInventoryStructureCache_(cacheKey);
+  if (cached && cached.headerMap) {
+    return Object.assign({}, cached.headerMap);
+  }
+  const headers = getSheetHeaders_(sheet);
+  return Object.fromEntries(
     headers.map((header, index) => [header, index])
   );
-  cacheInventoryStructureValue_(cacheKey, {
-    headerMap: headerMap
-  });
-  return headerMap;
 }
 
 
@@ -4534,23 +4627,15 @@ function getRecords_(sheetName) {
   return records.map((record) => Object.assign({}, record));
 }
 /**
- * Appends a record to a worksheet using the Google Sheets API.
+ * Appends records inside the worksheet's native Google Sheets Table.
  *
- * VERSION 1.3 CHANGE:
+ * The application caches ordered headers and native-table metadata, reserves
+ * available rows within the Table, expands the Table when necessary, and
+ * writes grouped contiguous ranges with setValues(). SpreadsheetApp.flush()
+ * is retained so subsequent operations see the committed append immediately.
  *
- * Previous versions used:
- *
- *     sheet.appendRow(row);
- *
- * That can place data below a native Google Sheets Table without
- * extending the Table range. The application could subsequently read
- * the row, but the row would not appear within the visible Table.
- *
- * This implementation uses Sheets.Spreadsheets.Values.append().
- * Google searches the supplied sheet range for its logical table and
- * appends the new row after the existing table data.
- *
- * The Advanced Google Sheets service must remain enabled.
+ * The Advanced Google Sheets service must remain enabled because native Table
+ * metadata and Table resizing use the Sheets API.
  *
  * @param {string} sheetName
  * @param {Object} record
@@ -4564,15 +4649,7 @@ function getRecords_(sheetName) {
       return [];
     }
     const sheet = getSheetOrThrow_(sheetName);
-    const lastColumn = sheet.getLastColumn();
-    if (lastColumn < 1) {
-      throw new Error(
-        `Cannot append to ${sheetName}: the sheet has no header columns.`
-      );
-    }
-    const headers = sheet
-      .getRange(1, 1, 1, lastColumn)
-      .getDisplayValues()[0];
+    const headers = getSheetHeaders_(sheet);
     const primaryHeader = headers[0];
     records.forEach((record) => {
       const primaryValue = Object.prototype.hasOwnProperty.call(
@@ -5102,7 +5179,12 @@ function now_() {
 FILE: Dashboard.js
 ================================================================
 
-/** Dashboard and one-stop ordering for Inventory Management v1.13. */
+/**
+ * Dashboard.js
+ * Inventory dashboard and consolidated ordering.
+ * Scope: Calculates rolling usage, presents materialized inventory health, and records multi-product dashboard orders.
+ * Current as of v1.20.
+ */
 const DASHBOARD_SESSION_WINDOW = 10;
 const DASHBOARD_SESSIONS_PER_WEEK = 3;
 
@@ -5202,15 +5284,6 @@ function getRecentDashboardTransactions_() {
 
 function isActiveCatalogRecord_(record) {
   return record.Active === true || String(record.Active).toLowerCase() === 'true';
-}
-
-function getRecentProcessedSessionIds_(transactions) {
-  const markers = transactions.filter((transaction) => {
-    return String(transaction.Inventory_Type) === 'System' &&
-      String(transaction.Transaction_Type) === 'Session Processed' &&
-      normalizeText_(transaction.Session_ID);
-  }).sort((a, b) => new Date(b.Effective_Date) - new Date(a.Effective_Date));
-  return [...new Set(markers.map((marker) => String(marker.Session_ID)))].slice(0, DASHBOARD_SESSION_WINDOW);
 }
 
 function placeDashboardOrder(adminCode, order) {
@@ -5340,6 +5413,12 @@ FILE: Index.html
 ================================================================
 
 <!DOCTYPE html>
+<!--
+  Index.html
+  Integrated web application shell.
+  Scope: Renders the home screen, application modules, login dialogs, and shared navigation.
+  Current as of v1.20.
+-->
 <html>
  <head>
   <base target="_top"/>
@@ -5483,12 +5562,11 @@ FILE: Inventory.js
 ================================================================
 
 /**
- * Inventory.gs
- * LBA Bingo Inventory Management v1.4
- *
- * Authoritative inventory-item and transaction operations.
+ * Inventory.js
+ * Authoritative inventory records and ledger operations.
+ * Scope: Manages PT deals, Paper cases, Transactions, materialized balances, shared reconciliation records, and inventory issues.
+ * Current as of v1.20.
  */
-
 const PT_AVAILABLE_STATUSES = new Set([
   'Unbundled',
   'Bundled'
@@ -5522,10 +5600,10 @@ function getPaperCases_() {
 
 
 /**
- * Finds an identified PT deal by Form Number + Serial Number.
+ * Finds an identified PT deal by authoritative PT_Game_ID + Serial_Number.
  *
  * Blank serial numbers deliberately do not identify a deal because multiple
- * anonymous deals of one Form Number are valid inventory records.
+ * anonymous deals of one PT game are valid inventory records.
  */
 function findPTDeal_(gameId, serialNumber) {
   const normalizedGameId = normalizeText_(gameId);
@@ -5830,7 +5908,9 @@ function createPaperCase_(data) {
       ? (data.receivedDate || now_())
       : '',
     Expended_Date: '',
-    Notes: data.notes || ''
+    Notes: data.notes || '',
+    Current_Packs: 0,
+    Balance_Updated_At: data.receivedDate || now_()
   });
 
   return caseId;
@@ -5979,7 +6059,7 @@ function findPTDealById_(dealId) {
 /**
  * Checks whether another PT deal already uses a proposed nonblank serial.
  *
- * @param {string} formNumber
+ * @param {string} gameId
  * @param {string} serialNumber
  * @param {string=} excludedDealId
  * @return {Object|null}
@@ -6337,12 +6417,10 @@ FILE: InventoryIssues.js
 
 /**
  * InventoryIssues.js
- * LBA Bingo Inventory Management v1.14
- *
- * Read-only issue reporting plus explicit manual resolution.
+ * Inventory Issue reporting and resolution.
+ * Scope: Returns browser-safe issue data and records explicit administrator resolutions.
+ * Current as of v1.20.
  */
-
-
 function serializeInventoryIssueDate_(value) {
   if (!value) return '';
   if (value instanceof Date) {
@@ -6478,17 +6556,11 @@ FILE: Ordering.js
 ================================================================
 
 /**
- * Ordering.gs
- * LBA Bingo Inventory Management v1.4
- *
- * Records Director-entered inventory orders.
- *
- * V1.4 changes:
- * - Deals per Case is authoritative from PT_Catalog.
- * - The browser no longer supplies or controls Deals per Case.
- * - The entire order is validated before any inventory record is created.
+ * Ordering.js
+ * Administrator-entered stock ordering.
+ * Scope: Validates catalog selections and adds anonymous PT deals or Paper cases with receipt Transactions.
+ * Current as of v1.20.
  */
-
 function recordPTOrder(token, payload) {
   requireAdmin_(token);
   payload = payload || {};
@@ -6603,13 +6675,11 @@ FILE: PTInventory.js
 ================================================================
 
 /**
- * PTBundling.js
- * LBA Bingo Inventory Management v1.11
- *
- * Public operational PT bundling workflow. No administrator token is required.
+ * PTInventory.js
+ * PT bundling and PT reconciliation.
+ * Scope: Runs public PT receipt processing and administrator PT physical-inventory reconciliation using PT_Game_ID identity.
+ * Current as of v1.20.
  */
-
-
 function getPTBundlingGames() {
   const gamesById = new Map(
     getPTCatalog_().map((game) => [String(game.PT_Game_ID), game])
@@ -7210,22 +7280,6 @@ function validatePTReconciliationObservations_(
  * @param {*} newNote
  * @return {string}
  */
-function appendPTDealNote_(existingNotes, newNote) {
-  const existing = normalizeText_(existingNotes);
-  const addition = normalizeText_(newNote);
-
-  if (!addition) {
-    return existing;
-  }
-
-  if (!existing) {
-    return addition;
-  }
-
-  return `${existing}; ${addition}`;
-}
-
-
 function reconcileExistingPTDeal_(context) {
   const observation = context.observation;
   const dealId = normalizeText_(observation.dealId);
@@ -7316,7 +7370,7 @@ function reconcileExistingPTDeal_(context) {
   }
 
   if (noteAdded) {
-    rowUpdates.Notes = appendPTDealNote_(
+    rowUpdates.Notes = appendInventoryNote_(
       existingNotes,
       reconciliationNote
     );
@@ -7483,12 +7537,11 @@ FILE: PaperInventory.js
 ================================================================
 
 /**
- * PaperReconciliation.gs
- * LBA Bingo Inventory Management v1.9
- *
- * Serial/case-level paper reconciliation.
+ * PaperInventory.js
+ * Paper inventory reconciliation.
+ * Scope: Reconciles serial-numbered Paper cases, physical pack counts, case statuses, and correction Transactions.
+ * Current as of v1.20.
  */
-
 const PAPER_CASE_STATUSES = [
   'Unopened',
   'Opened',
@@ -8002,15 +8055,11 @@ FILE: Paperwork.js
 ================================================================
 
 /**
- * PaperworkManagement.js
- * LBA Bingo Inventory Management v1.12
- *
- * Integrated copy of the proven standalone Paperwork Management workflow.
- * Creation, trigger, folder scanning, and archive-folder behavior remain
- * unchanged in purpose. Inventory processing is inserted only immediately
- * before a completed session folder is moved to the quarterly archive.
+ * Paperwork.js
+ * Session paperwork creation, processing, and archival.
+ * Scope: Manages paperwork folders, templates, triggers, session inventory extraction, issue creation, and quarterly archival.
+ * Current as of v1.20.
  */
-
 const PAPERWORK_CONFIG = {
   weeklyFolders: {
     Thursday: '1jLGDOstBCOeG2mDJlEQ-1pAyBppvbJ78',
@@ -9240,7 +9289,7 @@ function processSessionInventoryBeforeArchive_(context) {
   try {
     const spreadsheet = SpreadsheetApp.openById(file.getId());
 
-    const paperCount = processSessionPaper_(
+    const paperResult = processSessionPaper_(
       spreadsheet,
       context,
       file
@@ -9257,16 +9306,18 @@ function processSessionInventoryBeforeArchive_(context) {
       context.date,
       'Session Processed',
       `Completed inventory processing from ${file.getName()}. ` +
-      `${paperCount} Paper transaction(s); ` +
+      `${paperResult.transactions} Paper transaction(s); ` +
       `${ptResult.transactions} PT transaction(s); ` +
-      `${ptResult.issues} issue(s).`
+      `${paperResult.issues + ptResult.issues} issue(s).`
     );
 
     return {
       ok: true,
-      paperTransactions: paperCount,
+      paperTransactions: paperResult.transactions,
       ptTransactions: ptResult.transactions,
-      issues: ptResult.issues,
+      paperIssues: paperResult.issues,
+      ptIssues: ptResult.issues,
+      issues: paperResult.issues + ptResult.issues,
       message: 'Session inventory processing completed.'
     };
   } catch (error) {
@@ -9539,239 +9590,6 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
 }
 
 
-function processCompletedPTDeal_(
-  formNumber,
-  serialNumber,
-  context,
-  sheetName,
-  rowNumber,
-  sourceFile
-) {
-  const resolvedGame = resolvePTGameByForm_(formNumber, {includeInactive:true});
-  const canonicalFormNumber = resolvedGame ? resolvedGame.primaryFormNumber : formNumber;
-  const deal = resolvedGame
-    ? findPTDeal_(resolvedGame.gameId, serialNumber)
-    : null;
-
-  if (!deal) {
-    createPTPaperworkIssue_(
-      'Unknown Deal',
-      null,
-      formNumber,
-      serialNumber,
-      context,
-      `${sheetName} row ${rowNumber}; source file ${sourceFile.getId()}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const status = String(deal.Deal_Status);
-
-  if (status === 'Sold') {
-    createPTPaperworkIssue_(
-      'Duplicate Sale',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `${sheetName} row ${rowNumber}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const quantityChange = status === 'Open' ? 0 : -1;
-
-  if (!['Bundled', 'Open'].includes(status)) {
-    createPTPaperworkIssue_(
-      'Unavailable Deal',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `Deal status was ${status}; ${sheetName} row ${rowNumber}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  updateRecordRow_('PT_Deals', deal._rowNumber, {
-    Deal_Status: 'Sold',
-    Expended_Date: context.date,
-    Expended_Session_ID: context.sessionId
-  });
-
-    applySinglePTStatusChange_(
-      deal.PT_Game_ID,
-      status,
-      'Sold'
-    );
-    postInventoryTransaction_({
-      effectiveDate: context.date,
-      inventoryType: 'PT',
-      productId: deal.PT_Game_ID,
-      itemId: deal.PT_Deal_ID,
-      formNumber: canonicalFormNumber,
-      serialNumber: serialNumber,
-      transactionType: 'Sold',
-    quantityChange: quantityChange,
-    unit: 'Deal',
-    sessionId: context.sessionId,
-    source: SESSION_PROCESSING_SOURCE,
-    notes: `${sheetName} row ${rowNumber}; source file ${sourceFile.getId()}.`
-  });
-
-  return { transaction: true, issue: false };
-}
-
-
-function processCarryoverPTDealValues_(values, startRow, context, sourceFile) {
-  const serialNumber = normalizeText_(values.serialNumber);
-  const formNumber = normalizeFormNumber_(values.formNumber);
-  const ticketCount = Number(values.ticketCount || 0);
-
-  if (!serialNumber || !formNumber) {
-    return { transaction: false, issue: false };
-  }
-
-  const totalSales = Number(values.totalSales || 0);
-  const resolvedGame = resolvePTGameByForm_(formNumber, {includeInactive:true});
-  const canonicalFormNumber = resolvedGame ? resolvedGame.primaryFormNumber : formNumber;
-  const deal = resolvedGame
-    ? findPTDeal_(resolvedGame.gameId, serialNumber)
-    : null;
-
-  if (!deal) {
-    createPTPaperworkIssue_(
-      'Unknown Deal',
-      null,
-      formNumber,
-      serialNumber,
-      context,
-      `Carry-over block beginning row ${startRow}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  if (totalSales > ticketCount) {
-    createPTPaperworkIssue_(
-      'Unexpected Deal',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `Carry-over sales ${totalSales} exceed ticket count ${ticketCount}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const completed = totalSales === ticketCount;
-  const priorStatus = String(deal.Deal_Status);
-  const targetStatus = completed ? 'Sold' : 'Open';
-
-  if (priorStatus === targetStatus) {
-    return { transaction: false, issue: false };
-  }
-
-  if (!['Bundled', 'Open'].includes(priorStatus)) {
-    createPTPaperworkIssue_(
-      'Unavailable Deal',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `Carry-over deal status was ${priorStatus}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const quantityChange =
-    priorStatus === 'Bundled' && targetStatus === 'Open'
-      ? -1
-      : 0;
-
-  const updates = {
-    Deal_Status: targetStatus
-  };
-
-  if (targetStatus === 'Sold') {
-    updates.Expended_Date = context.date;
-    updates.Expended_Session_ID = context.sessionId;
-  }
-
-  updateRecordRow_('PT_Deals', deal._rowNumber, updates);
-
-    applySinglePTStatusChange_(
-      deal.PT_Game_ID,
-      priorStatus,
-      targetStatus
-    );
-    postInventoryTransaction_({
-      effectiveDate: context.date,
-      inventoryType: 'PT',
-      productId: deal.PT_Game_ID,
-      itemId: deal.PT_Deal_ID,
-      formNumber: canonicalFormNumber,
-      serialNumber: serialNumber,
-      transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
-    quantityChange: quantityChange,
-    unit: 'Deal',
-    sessionId: context.sessionId,
-    source: SESSION_PROCESSING_SOURCE,
-    notes:
-      `Carry-over block row ${startRow}; ${totalSales}/${ticketCount} sold; ` +
-      `source file ${sourceFile.getId()}.`
-  });
-
-  return { transaction: true, issue: false };
-}
-function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
-  const values = sheet.getRange(startRow, 4, 5, 3).getValues();
-  return processCarryoverPTDealValues_(
-    {
-      serialNumber: values[0][0],
-      formNumber: values[0][1],
-      ticketCount: values[0][2],
-      totalSales:
-        Number(values[3][1] || 0) +
-        Number(values[4][1] || 0)
-    },
-    startRow,
-    context,
-    sourceFile
-  );
-}
-
-
-
-function createPTPaperworkIssue_(
-  issueType,
-  deal,
-  formNumber,
-  serialNumber,
-  context,
-  notes
-) {
-  return createInventoryIssue_({
-    inventoryType: 'PT',
-    issueType: issueType,
-    productId: deal ? deal.PT_Game_ID : '',
-    itemId: deal ? deal.PT_Deal_ID : '',
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    sessionId: context.sessionId,
-    expectedQuantity: deal ? 1 : 0,
-    reportedQuantity: 1,
-    discrepancyAmount: deal ? 0 : 1,
-    notes: notes
-  });
-}
-
-
 function createIntegerRange_(first, last) {
   const output = [];
 
@@ -9788,18 +9606,19 @@ FILE: Schema.js
 ================================================================
 
 /**
- * Schema.gs
- * LBA Bingo Inventory schema v1
- *
- * This module permanently defines, initializes, and validates the v1 schema.
- * It requires the Advanced Google Sheets service (Sheets API v4):
- * Apps Script editor > Services > + > Google Sheets API > Add.
- *
- * IMPORTANT:
- * - initializeInventoryWorkbook() is intended for a new/blank workbook.
- * - It will not overwrite an existing schema sheet.
+ * Schema.js
+ * Inventory workbook schema definition and maintenance.
+ * Scope: Initializes, validates, repairs, formats, and configures native Google Sheets Tables for the inventory workbook.
+ * Current as of v1.20.
+ */
+
+/**
+ * Operational requirements:
+ * - The Advanced Google Sheets service (Sheets API v4) must remain enabled.
+ * - initializeInventoryWorkbook() is intended only for a new or blank workbook.
+ * - Initialization will not overwrite an existing schema sheet.
  * - Do not rerun initialization against a live inventory workbook.
- * - Use future migration functions for structural changes after go-live.
+ * - Use versioned migration functions for structural changes after go-live.
  */
 
 const INVENTORY_SCHEMA_V1 = Object.freeze({
@@ -10206,6 +10025,7 @@ function initializeOneSheet_(sheet, sheetName, definition) {
   const headers = definition.headers;
   ensureSheetSize_(sheet, INVENTORY_SCHEMA_V1.tableRows, Math.max(headers.length, 3));
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  invalidateInventoryHeaderCache_(sheet);
   sheet.getRange(1, 1, 1, headers.length)
     .setFontWeight('bold')
     .setFontColor('#ffffff')
@@ -10470,7 +10290,10 @@ FILE: SchemaPatchV114.js
 ================================================================
 
 /**
- * One-time V1.14 migration for Inventory_Issues resolution history.
+ * SchemaPatchV114.js
+ * One-time v1.14 schema migration.
+ * Scope: Adds Inventory_Issues resolution-history columns and extends the native Table.
+ * Current as of v1.20.
  */
 function applySchemaV114Patch() {
   const sheet = getSheetOrThrow_('Inventory_Issues');
@@ -10580,11 +10403,10 @@ FILE: SchemaPatchV115.js
 ================================================================
 
 /**
- * One-time V1.15 schema expansion and balance initialization.
- *
- * The function is idempotent. It may be rerun after a prior interrupted
- * attempt. Existing V1.15 columns are retained and balances are rebuilt from
- * the authoritative Transactions ledger.
+ * SchemaPatchV115.js
+ * One-time v1.15 schema migration.
+ * Scope: Adds materialized inventory-balance columns and initializes their values from authoritative records.
+ * Current as of v1.20.
  */
 function applySchemaV115Patch() {
   const additions = {
@@ -10736,7 +10558,12 @@ function applySchemaV115Patch() {
 FILE: Settings.js
 ================================================================
 
-/** Central non-secret configuration access. */
+/**
+ * Settings.js
+ * Application configuration access.
+ * Scope: Reads non-secret Settings values, builds public app configuration, and initializes required application settings.
+ * Current as of v1.20.
+ */
 function getSettingsMap_() {
   const records = getRecords_('Settings');
   return Object.fromEntries(records.filter(r => r.Setting).map(r => [String(r.Setting), r.Value]));
