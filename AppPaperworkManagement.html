@@ -120,6 +120,9 @@
     class="status"
     aria-live="polite"
   ></div>
+  <div class="actions">
+    <button id="paperwork-review-issues" class="btn gold hidden" type="button" onclick="openInventoryIssues()">Review Inventory Issues</button>
+  </div>
 </section>
 
 <style>
@@ -325,54 +328,21 @@
   }
 
 
-  async function archiveSelectedPaperworkFromScreen() {
-    const items = [
-      ...document.querySelectorAll('.paperwork-archive-choice:checked')
-    ].map((checkbox) => {
-      return {
-        folderId: checkbox.dataset.id,
-        folderName: checkbox.dataset.name,
-        label: checkbox.dataset.label
-      };
-    });
-
-    if (!items.length) {
-      setStatus(
-        'paperwork-status',
-        'Select at least one session to process and archive.',
-        true
-      );
-      return;
-    }
-
-    if (!window.confirm('Process inventory and archive selected paperwork?')) {
-      return;
-    }
-
-    setStatus(
-      'paperwork-status',
-      'Processing inventory and archiving selected paperwork...'
-    );
-
-    try {
-      const data = await server('archiveSelectedPaperwork', ADMIN_TOKEN, items);
-      renderPaperworkSessions(data.sessions);
-
-      const lines = data.results.map((result) => {
-        return (
-          (result.ok ? 'OK: ' : 'ERROR: ') +
-          result.folderName + ' - ' + result.message
-        );
-      });
-
-      const hasError = data.results.some((result) => !result.ok);
-      setStatus(
-        'paperwork-status',
-        lines.join('\n'),
-        hasError
-      );
-    } catch (error) {
-      setStatus('paperwork-status', error.message, true);
-    }
-  }
+async function archiveSelectedPaperworkFromScreen() {
+  const items = [...document.querySelectorAll('.paperwork-archive-choice:checked')].map((checkbox) => ({folderId:checkbox.dataset.id,folderName:checkbox.dataset.name,label:checkbox.dataset.label}));
+  if (!items.length) { setStatus('paperwork-status','Select at least one session to process and archive.',true); return; }
+  if (!window.confirm('Process inventory and archive selected paperwork?')) return;
+  $('paperwork-review-issues').classList.add('hidden');
+  setStatus('paperwork-status','Processing inventory and archiving selected paperwork...');
+  try {
+    const data = await server('archiveSelectedPaperwork',ADMIN_TOKEN,items);
+    renderPaperworkSessions(data.sessions);
+    const lines=data.results.map((result)=>(result.ok?'OK: ':'ERROR: ')+result.folderName+' - '+result.message);
+    const hasError=data.results.some((result)=>!result.ok);
+    const issueCount=data.results.reduce((total,result)=>total+Number(result.issues||0),0);
+    setStatus('paperwork-status',lines.join('\n'),hasError);
+    if (!hasError && issueCount>0) $('paperwork-status').className='status show warn';
+    $('paperwork-review-issues').classList.toggle('hidden',issueCount===0);
+  } catch(error) { setStatus('paperwork-status',error.message,true); }
+}
 </script>

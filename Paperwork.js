@@ -731,13 +731,18 @@ function archiveOneSession_(date, label, sessionId) {
 
     folder.moveTo(getUniquePaperworkArchiveQuarterFolder_(date));
 
+    const issueCount = Number(inventoryResult.issues || 0);
     return {
       ok: true,
       dateCode: dateCode,
       label: label,
+      issues: issueCount,
       message:
         `Inventory processed and archived to ` +
-        `${getPaperworkArchiveQuarterName_(date)}.`
+        `${getPaperworkArchiveQuarterName_(date)}.` +
+        (issueCount
+          ? ` ${issueCount} Inventory Issue(s) require review.`
+          : ' No Inventory Issues were created.')
     };
   } catch (error) {
     return {
@@ -1380,7 +1385,10 @@ function processSessionPaper_(spreadsheet, context, sourceFile) {
     if (Object.keys(updates).length) statusUpdates.push({rowNumber:row._rowNumber, updates:updates});
   });
   updateRecordRows_('Paper_Cases', statusUpdates);
-  return entries.length;
+  return {
+    transactions: entries.length,
+    issues: issues.length
+  };
 }
 
 function processSessionPT_(spreadsheet, context, sourceFile) {

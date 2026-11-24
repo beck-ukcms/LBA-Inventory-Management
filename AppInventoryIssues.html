@@ -133,33 +133,26 @@
   }
 
 
-  async function loadInventoryIssues(filter) {
-    INVENTORY_ISSUES_FILTER = filter;
-    clearStatus('inventory-issues-status');
-
-    ['Open', 'Resolved', 'All'].forEach((option) => {
-      const button = $(`issues-${option.toLowerCase()}-tab`);
-      button.className = option === filter
-        ? 'btn'
-        : 'btn secondary';
-    });
-
-    try {
-      INVENTORY_ISSUES = await server(
-        'getInventoryIssues',
-        ADMIN_TOKEN,
-        filter
-      );
-
-      renderInventoryIssues();
-    } catch (error) {
-      setStatus(
-        'inventory-issues-status',
-        error.message,
-        true
-      );
+async function loadInventoryIssues(filter) {
+  INVENTORY_ISSUES_FILTER = filter;
+  clearStatus('inventory-issues-status');
+  ['Open', 'Resolved', 'All'].forEach((option) => {
+    const button = $(`issues-${option.toLowerCase()}-tab`);
+    button.className = option === filter ? 'btn' : 'btn secondary';
+  });
+  try {
+    const issues = await server('getInventoryIssues', ADMIN_TOKEN, filter);
+    if (!Array.isArray(issues)) {
+      throw new Error('Inventory Issues returned an invalid response. Please reload and try again.');
     }
+    INVENTORY_ISSUES = issues;
+    renderInventoryIssues();
+  } catch (error) {
+    INVENTORY_ISSUES = [];
+    $('inventory-issues-rows').innerHTML = '';
+    setStatus('inventory-issues-status', error.message, true);
   }
+}
 
 
   function renderInventoryIssues() {

@@ -1,5 +1,5 @@
 ================================================================
-GIT COMMIT: 88505c5518213b9c01d08a1021d1b1dd636ddf76
+GIT COMMIT: e9371e819bdb2a7362a7740ced2031814a8e315c
 ================================================================
 
 ================================================================
@@ -6747,7 +6747,7 @@ function bundlePTDeal(formNumber, serialNumber) {
     const bundlingDeals = getPTDealsForBundlingLookup_();
     const existingDeal = findPTDealForBundling_(
       bundlingDeals,
-      normalizedForm,
+      gameId,
       normalizedSerial
     );
     timer.mark('PT Deals lookup');
@@ -6880,8 +6880,7 @@ function bundleExistingIdentifiedPTDeal_(context) {
 function bundleNewlyIdentifiedPTDeal_(context) {
   const anonymousDeal = context.bundlingDeals.find((deal) => {
     return (
-      String(deal.PT_Game_ID) === String(context.game.PT_Game_ID) &&
-      normalizeFormNumber_(deal.Form_Number) === context.formNumber &&
+      String(deal.PT_Game_ID) === String(context.gameId) &&
       !normalizeText_(deal.Serial_Number) &&
       String(deal.Deal_Status) === 'Unbundled'
     );
@@ -6889,6 +6888,7 @@ function bundleNewlyIdentifiedPTDeal_(context) {
 
   if (anonymousDeal) {
     updateRecordRow_('PT_Deals', anonymousDeal._rowNumber, {
+      Form_Number: context.formNumber,
       Serial_Number: context.serialNumber,
       Deal_Status: 'Bundled',
       Bundled_Date: now_(),
@@ -7193,11 +7193,10 @@ function validatePTReconciliationObservations_(
       }
 
       if (
-        String(existingDeal.PT_Game_ID) !== String(gameId) ||
-        normalizeFormNumber_(existingDeal.Form_Number) !== formNumber
+        String(existingDeal.PT_Game_ID) !== String(gameId)
       ) {
         throw new Error(
-          `Deal ${dealId} does not belong to the selected game/form.`
+          `Deal ${dealId} does not belong to the selected PT game.`
         );
       }
     } else if (!serialNumber) {
@@ -7218,7 +7217,7 @@ function validatePTReconciliationObservations_(
       submittedSerials.add(serialKey);
 
       const conflict = findConflictingPTSerial_(
-        formNumber,
+        gameId,
         serialNumber,
         dealId
       );
@@ -7277,12 +7276,15 @@ function reconcileExistingPTDeal_(context) {
   const reconciliationNote = normalizeText_(observation.notes);
 
   const serialChanged = recordedSerial !== observedSerial;
+  const formChanged =
+    normalizeFormNumber_(existingDeal.Form_Number) !== context.formNumber;
   const statusChanged = recordedStatus !== observedStatus;
 
   const noteAdded = Boolean(reconciliationNote);
 
   if (
     !serialChanged &&
+    !formChanged &&
     !statusChanged &&
     !noteAdded
   ) {
@@ -7319,6 +7321,10 @@ function reconcileExistingPTDeal_(context) {
   });
 
   const rowUpdates = {};
+
+  if (formChanged) {
+    rowUpdates.Form_Number = context.formNumber;
+  }
 
   if (serialChanged) {
     rowUpdates.Serial_Number = observedSerial;
@@ -9204,7 +9210,7 @@ const COMPLETED_PT_RANGES = [
   { sheetName: 'WS-07 Prog PTs', rows: [7, 8, 14, 15, 16, 17, 18, 19, 20, 21, 29, 30] }
 ];
 
-const CARRYOVER_START_ROWS = [33, 50, 67];
+const CARRYOVER_START_ROWS = [33, 41, 49];
 
 
 function processSessionInventoryBeforeArchive_(context) {
@@ -9440,11 +9446,12 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
   const main = spreadsheet.getSheetByName('WS-06 PTs (Main)');
   if (!main) throw new Error('Required worksheet WS-06 PTs (Main) is missing.');
   const firstCarryoverRow = Math.min(...CARRYOVER_START_ROWS);
-  const lastCarryoverRow = Math.max(...CARRYOVER_START_ROWS) + 5;
+  const lastCarryoverRow = Math.max(...CARRYOVER_START_ROWS) + 4;
   const values = main.getRange(firstCarryoverRow, 4, lastCarryoverRow - firstCarryoverRow + 1, 3).getValues();
   CARRYOVER_START_ROWS.forEach((startRow) => {
     const start = values[startRow - firstCarryoverRow];
-    const sales = values[startRow + 5 - firstCarryoverRow];
+    const previousSales = values[startRow + 3 - firstCarryoverRow];
+    const currentSales = values[startRow + 4 - firstCarryoverRow];
     const serialNumber = normalizeText_(start[0]);
     const formNumber = normalizeFormNumber_(start[1]);
     if (!serialNumber || !formNumber) return;
@@ -9453,7 +9460,9 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
       formNumber: formNumber,
       serialNumber: serialNumber,
       ticketCount: Number(start[2] || 0),
-      totalSales: Number(sales[2] || 0),
+      totalSales:
+        Number(previousSales[1] || 0) +
+        Number(currentSales[1] || 0),
       location: `Carry-over block row ${startRow}`
     });
   });
@@ -9746,13 +9755,15 @@ function processCarryoverPTDealValues_(values, startRow, context, sourceFile) {
   return { transaction: true, issue: false };
 }
 function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
-  const values = sheet.getRange(startRow, 4, 6, 3).getValues();
+  const values = sheet.getRange(startRow, 4, 5, 3).getValues();
   return processCarryoverPTDealValues_(
     {
       serialNumber: values[0][0],
       formNumber: values[0][1],
       ticketCount: values[0][2],
-      totalSales: values[5][2]
+      totalSales:
+        Number(values[3][1] || 0) +
+        Number(values[4][1] || 0)
     },
     startRow,
     context,

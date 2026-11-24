@@ -6,69 +6,61 @@
  */
 
 
+function serializeInventoryIssueDate_(value) {
+  if (!value) return '';
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? '' : value.toISOString();
+  }
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+}
+
 function getInventoryIssues(token, statusFilter) {
   requireAdmin_(token);
-
   const normalizedFilter = normalizeText_(statusFilter) || 'Open';
-  const validFilters = [
-    'Open',
-    'Resolved',
-    'All'
-  ];
-
+  const validFilters = ['Open', 'Resolved', 'All'];
   if (!validFilters.includes(normalizedFilter)) {
     throw new Error('Invalid Inventory Issue filter.');
   }
-
-  const ptCatalog = getPTCatalog_();
-  const paperCatalog = getPaperCatalog_();
-
+  const ptById = new Map(
+    getPTCatalog_().map((game) => [String(game.PT_Game_ID), game])
+  );
+  const paperById = new Map(
+    getPaperCatalog_().map((paper) => [String(paper.Paper_ID), paper])
+  );
   return getRecords_('Inventory_Issues')
     .filter((issue) => {
-      return (
-        normalizedFilter === 'All' ||
-        String(issue.Status) === normalizedFilter
-      );
+      return normalizedFilter === 'All' ||
+        String(issue.Status) === normalizedFilter;
     })
     .map((issue) => {
       const inventoryType = String(issue.Inventory_Type);
       const productId = String(issue.Product_ID || '');
+      const game = inventoryType === 'PT'
+        ? ptById.get(productId)
+        : null;
+      const paper = inventoryType === 'Paper'
+        ? paperById.get(productId)
+        : null;
       let productLabel = productId || '(not identified)';
-
-      if (inventoryType === 'PT') {
-        const game = ptCatalog.find((catalogRow) => {
-          return String(catalogRow.PT_Game_ID) === productId;
-        });
-
-        if (game) {
-          productLabel = String(game.Game_Name);
-        } else if (issue.Form_Number) {
-          productLabel = String(issue.Form_Number);
-        }
+      if (game) {
+        productLabel = String(game.Game_Name);
+      } else if (inventoryType === 'PT' && issue.Form_Number) {
+        productLabel = String(issue.Form_Number);
+      } else if (paper) {
+        productLabel = `${paper.Short_Name} - ${paper.Description}`;
       }
-
-      if (inventoryType === 'Paper') {
-        const paper = paperCatalog.find((catalogRow) => {
-          return String(catalogRow.Paper_ID) === productId;
-        });
-
-        if (paper) {
-          productLabel =
-            `${paper.Short_Name} - ${paper.Description}`;
-        }
-      }
-
       return {
         issueId: String(issue.Issue_ID),
-        timestamp: issue.Timestamp,
+        timestamp: serializeInventoryIssueDate_(issue.Timestamp),
         inventoryType: inventoryType,
         issueType: String(issue.Issue_Type),
         productId: productId,
         productLabel: productLabel,
         itemId: String(issue.Item_ID || ''),
-        formNumber: inventoryType === 'PT' && productId
-            ? normalizeFormNumber_((ptCatalog.find((row) => String(row.PT_Game_ID) === productId) || {}).Primary_Form_Number || issue.Form_Number)
-            : String(issue.Form_Number || ''),
+        formNumber: game
+          ? normalizeFormNumber_(game.Primary_Form_Number)
+          : String(issue.Form_Number || ''),
         serialNumber: String(issue.Serial_Number || ''),
         sessionId: String(issue.Session_ID || ''),
         expectedQuantity: Number(issue.Expected_Quantity || 0),
@@ -77,22 +69,16 @@ function getInventoryIssues(token, statusFilter) {
         status: String(issue.Status),
         reconciliationId: String(issue.Reconciliation_ID || ''),
         notes: String(issue.Notes || ''),
-        resolvedAt: issue.Resolved_At || '',
+        resolvedAt: serializeInventoryIssueDate_(issue.Resolved_At),
         resolutionNotes: String(issue.Resolution_Notes || '')
       };
     })
     .sort((first, second) => {
       const firstOpen = first.status === 'Open' ? 0 : 1;
       const secondOpen = second.status === 'Open' ? 0 : 1;
-
-      if (firstOpen !== secondOpen) {
-        return firstOpen - secondOpen;
-      }
-
-      return (
-        new Date(second.timestamp).getTime() -
-        new Date(first.timestamp).getTime()
-      );
+      if (firstOpen !== secondOpen) return firstOpen - secondOpen;
+      return new Date(second.timestamp).getTime() -
+        new Date(first.timestamp).getTime();
     });
 }
 

@@ -81,10 +81,24 @@
     box-shadow: 0 10px 24px #173e6a25;
   }
 
-  .tile img {
+  .tile img,
+  .tile-visual {
     width: 100%;
     aspect-ratio: 1;
+  }
+  .tile img {
     object-fit: cover;
+  }
+  .tile-visual {
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, var(--navy), var(--blue));
+    color: #ffffff;
+    font-size: clamp(72px, 10vw, 132px);
+    line-height: 1;
+  }
+  .tile-visual.admin {
+    background: linear-gradient(135deg, #4c5f78, var(--navy));
   }
 
   .tile-copy,
@@ -228,6 +242,10 @@
   .status.err {
     background: #fee9ea;
     color: #8f1820;
+  }
+  .status.warn {
+    background: #fff2cc;
+    color: #7f6000;
   }
 
   .muted {
