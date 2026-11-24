@@ -1,10 +1,9 @@
 /**
- * PaperReconciliation.gs
- * LBA Bingo Inventory Management v1.9
- *
- * Serial/case-level paper reconciliation.
+ * PaperInventory.js
+ * Paper inventory reconciliation.
+ * Scope: Reconciles serial-numbered Paper cases, physical pack counts, case statuses, and correction Transactions.
+ * Current as of v1.20.
  */
-
 const PAPER_CASE_STATUSES = [
   'Unopened',
   'Opened',

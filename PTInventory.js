@@ -1,11 +1,9 @@
 /**
- * PTBundling.js
- * LBA Bingo Inventory Management v1.11
- *
- * Public operational PT bundling workflow. No administrator token is required.
+ * PTInventory.js
+ * PT bundling and PT reconciliation.
+ * Scope: Runs public PT receipt processing and administrator PT physical-inventory reconciliation using PT_Game_ID identity.
+ * Current as of v1.20.
  */
-
-
 function getPTBundlingGames() {
   const gamesById = new Map(
     getPTCatalog_().map((game) => [String(game.PT_Game_ID), game])
@@ -606,22 +604,6 @@ function validatePTReconciliationObservations_(
  * @param {*} newNote
  * @return {string}
  */
-function appendPTDealNote_(existingNotes, newNote) {
-  const existing = normalizeText_(existingNotes);
-  const addition = normalizeText_(newNote);
-
-  if (!addition) {
-    return existing;
-  }
-
-  if (!existing) {
-    return addition;
-  }
-
-  return `${existing}; ${addition}`;
-}
-
-
 function reconcileExistingPTDeal_(context) {
   const observation = context.observation;
   const dealId = normalizeText_(observation.dealId);
@@ -712,7 +694,7 @@ function reconcileExistingPTDeal_(context) {
   }
 
   if (noteAdded) {
-    rowUpdates.Notes = appendPTDealNote_(
+    rowUpdates.Notes = appendInventoryNote_(
       existingNotes,
       reconciliationNote
     );

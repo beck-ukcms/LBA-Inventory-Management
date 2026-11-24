@@ -1,10 +1,9 @@
 /**
- * Inventory.gs
- * LBA Bingo Inventory Management v1.4
- *
- * Authoritative inventory-item and transaction operations.
+ * Inventory.js
+ * Authoritative inventory records and ledger operations.
+ * Scope: Manages PT deals, Paper cases, Transactions, materialized balances, shared reconciliation records, and inventory issues.
+ * Current as of v1.20.
  */
-
 const PT_AVAILABLE_STATUSES = new Set([
   'Unbundled',
   'Bundled'
@@ -38,10 +37,10 @@ function getPaperCases_() {
 
 
 /**
- * Finds an identified PT deal by Form Number + Serial Number.
+ * Finds an identified PT deal by authoritative PT_Game_ID + Serial_Number.
  *
  * Blank serial numbers deliberately do not identify a deal because multiple
- * anonymous deals of one Form Number are valid inventory records.
+ * anonymous deals of one PT game are valid inventory records.
  */
 function findPTDeal_(gameId, serialNumber) {
   const normalizedGameId = normalizeText_(gameId);
@@ -346,7 +345,9 @@ function createPaperCase_(data) {
       ? (data.receivedDate || now_())
       : '',
     Expended_Date: '',
-    Notes: data.notes || ''
+    Notes: data.notes || '',
+    Current_Packs: 0,
+    Balance_Updated_At: data.receivedDate || now_()
   });
 
   return caseId;
@@ -495,7 +496,7 @@ function findPTDealById_(dealId) {
 /**
  * Checks whether another PT deal already uses a proposed nonblank serial.
  *
- * @param {string} formNumber
+ * @param {string} gameId
  * @param {string} serialNumber
  * @param {string=} excludedDealId
  * @return {Object|null}

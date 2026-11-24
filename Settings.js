@@ -1,4 +1,9 @@
-/** Central non-secret configuration access. */
+/**
+ * Settings.js
+ * Application configuration access.
+ * Scope: Reads non-secret Settings values, builds public app configuration, and initializes required application settings.
+ * Current as of v1.20.
+ */
 function getSettingsMap_() {
   const records = getRecords_('Settings');
   return Object.fromEntries(records.filter(r => r.Setting).map(r => [String(r.Setting), r.Value]));

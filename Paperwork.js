@@ -1,13 +1,9 @@
 /**
- * PaperworkManagement.js
- * LBA Bingo Inventory Management v1.12
- *
- * Integrated copy of the proven standalone Paperwork Management workflow.
- * Creation, trigger, folder scanning, and archive-folder behavior remain
- * unchanged in purpose. Inventory processing is inserted only immediately
- * before a completed session folder is moved to the quarterly archive.
+ * Paperwork.js
+ * Session paperwork creation, processing, and archival.
+ * Scope: Manages paperwork folders, templates, triggers, session inventory extraction, issue creation, and quarterly archival.
+ * Current as of v1.20.
  */
-
 const PAPERWORK_CONFIG = {
   weeklyFolders: {
     Thursday: '1jLGDOstBCOeG2mDJlEQ-1pAyBppvbJ78',
@@ -1237,7 +1233,7 @@ function processSessionInventoryBeforeArchive_(context) {
   try {
     const spreadsheet = SpreadsheetApp.openById(file.getId());
 
-    const paperCount = processSessionPaper_(
+    const paperResult = processSessionPaper_(
       spreadsheet,
       context,
       file
@@ -1254,16 +1250,18 @@ function processSessionInventoryBeforeArchive_(context) {
       context.date,
       'Session Processed',
       `Completed inventory processing from ${file.getName()}. ` +
-      `${paperCount} Paper transaction(s); ` +
+      `${paperResult.transactions} Paper transaction(s); ` +
       `${ptResult.transactions} PT transaction(s); ` +
-      `${ptResult.issues} issue(s).`
+      `${paperResult.issues + ptResult.issues} issue(s).`
     );
 
     return {
       ok: true,
-      paperTransactions: paperCount,
+      paperTransactions: paperResult.transactions,
       ptTransactions: ptResult.transactions,
-      issues: ptResult.issues,
+      paperIssues: paperResult.issues,
+      ptIssues: ptResult.issues,
+      issues: paperResult.issues + ptResult.issues,
       message: 'Session inventory processing completed.'
     };
   } catch (error) {
@@ -1533,239 +1531,6 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
   applyPTCatalogBalanceDeltas_(balanceDeltas);
   postInventoryTransactions_(transactions);
   return {transactions: transactions.length, issues: issues.length};
-}
-
-
-function processCompletedPTDeal_(
-  formNumber,
-  serialNumber,
-  context,
-  sheetName,
-  rowNumber,
-  sourceFile
-) {
-  const resolvedGame = resolvePTGameByForm_(formNumber, {includeInactive:true});
-  const canonicalFormNumber = resolvedGame ? resolvedGame.primaryFormNumber : formNumber;
-  const deal = resolvedGame
-    ? findPTDeal_(resolvedGame.gameId, serialNumber)
-    : null;
-
-  if (!deal) {
-    createPTPaperworkIssue_(
-      'Unknown Deal',
-      null,
-      formNumber,
-      serialNumber,
-      context,
-      `${sheetName} row ${rowNumber}; source file ${sourceFile.getId()}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const status = String(deal.Deal_Status);
-
-  if (status === 'Sold') {
-    createPTPaperworkIssue_(
-      'Duplicate Sale',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `${sheetName} row ${rowNumber}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const quantityChange = status === 'Open' ? 0 : -1;
-
-  if (!['Bundled', 'Open'].includes(status)) {
-    createPTPaperworkIssue_(
-      'Unavailable Deal',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `Deal status was ${status}; ${sheetName} row ${rowNumber}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  updateRecordRow_('PT_Deals', deal._rowNumber, {
-    Deal_Status: 'Sold',
-    Expended_Date: context.date,
-    Expended_Session_ID: context.sessionId
-  });
-
-    applySinglePTStatusChange_(
-      deal.PT_Game_ID,
-      status,
-      'Sold'
-    );
-    postInventoryTransaction_({
-      effectiveDate: context.date,
-      inventoryType: 'PT',
-      productId: deal.PT_Game_ID,
-      itemId: deal.PT_Deal_ID,
-      formNumber: canonicalFormNumber,
-      serialNumber: serialNumber,
-      transactionType: 'Sold',
-    quantityChange: quantityChange,
-    unit: 'Deal',
-    sessionId: context.sessionId,
-    source: SESSION_PROCESSING_SOURCE,
-    notes: `${sheetName} row ${rowNumber}; source file ${sourceFile.getId()}.`
-  });
-
-  return { transaction: true, issue: false };
-}
-
-
-function processCarryoverPTDealValues_(values, startRow, context, sourceFile) {
-  const serialNumber = normalizeText_(values.serialNumber);
-  const formNumber = normalizeFormNumber_(values.formNumber);
-  const ticketCount = Number(values.ticketCount || 0);
-
-  if (!serialNumber || !formNumber) {
-    return { transaction: false, issue: false };
-  }
-
-  const totalSales = Number(values.totalSales || 0);
-  const resolvedGame = resolvePTGameByForm_(formNumber, {includeInactive:true});
-  const canonicalFormNumber = resolvedGame ? resolvedGame.primaryFormNumber : formNumber;
-  const deal = resolvedGame
-    ? findPTDeal_(resolvedGame.gameId, serialNumber)
-    : null;
-
-  if (!deal) {
-    createPTPaperworkIssue_(
-      'Unknown Deal',
-      null,
-      formNumber,
-      serialNumber,
-      context,
-      `Carry-over block beginning row ${startRow}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  if (totalSales > ticketCount) {
-    createPTPaperworkIssue_(
-      'Unexpected Deal',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `Carry-over sales ${totalSales} exceed ticket count ${ticketCount}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const completed = totalSales === ticketCount;
-  const priorStatus = String(deal.Deal_Status);
-  const targetStatus = completed ? 'Sold' : 'Open';
-
-  if (priorStatus === targetStatus) {
-    return { transaction: false, issue: false };
-  }
-
-  if (!['Bundled', 'Open'].includes(priorStatus)) {
-    createPTPaperworkIssue_(
-      'Unavailable Deal',
-      deal,
-      formNumber,
-      serialNumber,
-      context,
-      `Carry-over deal status was ${priorStatus}.`
-    );
-
-    return { transaction: false, issue: true };
-  }
-
-  const quantityChange =
-    priorStatus === 'Bundled' && targetStatus === 'Open'
-      ? -1
-      : 0;
-
-  const updates = {
-    Deal_Status: targetStatus
-  };
-
-  if (targetStatus === 'Sold') {
-    updates.Expended_Date = context.date;
-    updates.Expended_Session_ID = context.sessionId;
-  }
-
-  updateRecordRow_('PT_Deals', deal._rowNumber, updates);
-
-    applySinglePTStatusChange_(
-      deal.PT_Game_ID,
-      priorStatus,
-      targetStatus
-    );
-    postInventoryTransaction_({
-      effectiveDate: context.date,
-      inventoryType: 'PT',
-      productId: deal.PT_Game_ID,
-      itemId: deal.PT_Deal_ID,
-      formNumber: canonicalFormNumber,
-      serialNumber: serialNumber,
-      transactionType: targetStatus === 'Open' ? 'Opened' : 'Sold',
-    quantityChange: quantityChange,
-    unit: 'Deal',
-    sessionId: context.sessionId,
-    source: SESSION_PROCESSING_SOURCE,
-    notes:
-      `Carry-over block row ${startRow}; ${totalSales}/${ticketCount} sold; ` +
-      `source file ${sourceFile.getId()}.`
-  });
-
-  return { transaction: true, issue: false };
-}
-function processCarryoverPTDeal_(sheet, startRow, context, sourceFile) {
-  const values = sheet.getRange(startRow, 4, 5, 3).getValues();
-  return processCarryoverPTDealValues_(
-    {
-      serialNumber: values[0][0],
-      formNumber: values[0][1],
-      ticketCount: values[0][2],
-      totalSales:
-        Number(values[3][1] || 0) +
-        Number(values[4][1] || 0)
-    },
-    startRow,
-    context,
-    sourceFile
-  );
-}
-
-
-
-function createPTPaperworkIssue_(
-  issueType,
-  deal,
-  formNumber,
-  serialNumber,
-  context,
-  notes
-) {
-  return createInventoryIssue_({
-    inventoryType: 'PT',
-    issueType: issueType,
-    productId: deal ? deal.PT_Game_ID : '',
-    itemId: deal ? deal.PT_Deal_ID : '',
-    formNumber: formNumber,
-    serialNumber: serialNumber,
-    sessionId: context.sessionId,
-    expectedQuantity: deal ? 1 : 0,
-    reportedQuantity: 1,
-    discrepancyAmount: deal ? 0 : 1,
-    notes: notes
-  });
 }
 
 

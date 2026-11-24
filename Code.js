@@ -1,20 +1,9 @@
 /**
- * Code.gs
- * LBA Bingo Inventory Management
- * Version 1.8
- *
- * Common application infrastructure:
- * - Web-app routing
- * - HTML includes
- * - Spreadsheet access
- * - Generic record reading
- * - Native-table-aware record appending
- * - Generic row updates
- * - ID generation
- * - Common validation and normalization utilities
+ * Code.js
+ * Shared application infrastructure.
+ * Scope: Provides web routing, spreadsheet access, structural caching, record I/O, ID generation, validation, and normalization.
+ * Current as of v1.20.
  */
-
-
 /**
  * Serves the main Inventory Management application.
  */
@@ -113,7 +102,7 @@ function getSheetOrThrow_(sheetName) {
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @return {Object}
  */
-const INVENTORY_STRUCTURE_CACHE_VERSION_ = 'v119b-1';
+const INVENTORY_STRUCTURE_CACHE_VERSION_ = 'v120-1';
 const INVENTORY_STRUCTURE_CACHE_TTL_SECONDS_ = 21600;
 
 function getInventoryStructureCache_() {
@@ -132,6 +121,18 @@ function inventoryStructureCacheKey_(kind, sheet) {
     getInventorySpreadsheet_().getId(),
     sheet.getSheetId()
   ].join(':');
+}
+
+function invalidateInventoryHeaderCache_(sheet) {
+  const cache = getInventoryStructureCache_();
+  if (!cache) return;
+  try {
+    cache.remove(
+      inventoryStructureCacheKey_('HEADERS', sheet)
+    );
+  } catch (error) {
+    // Cache failure must never block schema work.
+  }
 }
 
 function cacheInventoryStructureValue_(key, value) {
@@ -159,11 +160,15 @@ function readInventoryStructureCache_(key) {
   }
 }
 
-function getHeaderMap_(sheet) {
+function getSheetHeaders_(sheet) {
   const cacheKey = inventoryStructureCacheKey_('HEADERS', sheet);
   const cached = readInventoryStructureCache_(cacheKey);
-  if (cached && cached.headerMap) {
-    return cached.headerMap;
+  if (
+    cached &&
+    Array.isArray(cached.headers) &&
+    cached.headers.length
+  ) {
+    return cached.headers.slice();
   }
   const lastColumn = sheet.getLastColumn();
   if (lastColumn < 1) {
@@ -172,13 +177,25 @@ function getHeaderMap_(sheet) {
   const headers = sheet
     .getRange(1, 1, 1, lastColumn)
     .getDisplayValues()[0];
-  const headerMap = Object.fromEntries(
+  cacheInventoryStructureValue_(cacheKey, {
+    headers: headers,
+    headerMap: Object.fromEntries(
+      headers.map((header, index) => [header, index])
+    )
+  });
+  return headers.slice();
+}
+
+function getHeaderMap_(sheet) {
+  const cacheKey = inventoryStructureCacheKey_('HEADERS', sheet);
+  const cached = readInventoryStructureCache_(cacheKey);
+  if (cached && cached.headerMap) {
+    return Object.assign({}, cached.headerMap);
+  }
+  const headers = getSheetHeaders_(sheet);
+  return Object.fromEntries(
     headers.map((header, index) => [header, index])
   );
-  cacheInventoryStructureValue_(cacheKey, {
-    headerMap: headerMap
-  });
-  return headerMap;
 }
 
 
@@ -228,23 +245,15 @@ function getRecords_(sheetName) {
   return records.map((record) => Object.assign({}, record));
 }
 /**
- * Appends a record to a worksheet using the Google Sheets API.
+ * Appends records inside the worksheet's native Google Sheets Table.
  *
- * VERSION 1.3 CHANGE:
+ * The application caches ordered headers and native-table metadata, reserves
+ * available rows within the Table, expands the Table when necessary, and
+ * writes grouped contiguous ranges with setValues(). SpreadsheetApp.flush()
+ * is retained so subsequent operations see the committed append immediately.
  *
- * Previous versions used:
- *
- *     sheet.appendRow(row);
- *
- * That can place data below a native Google Sheets Table without
- * extending the Table range. The application could subsequently read
- * the row, but the row would not appear within the visible Table.
- *
- * This implementation uses Sheets.Spreadsheets.Values.append().
- * Google searches the supplied sheet range for its logical table and
- * appends the new row after the existing table data.
- *
- * The Advanced Google Sheets service must remain enabled.
+ * The Advanced Google Sheets service must remain enabled because native Table
+ * metadata and Table resizing use the Sheets API.
  *
  * @param {string} sheetName
  * @param {Object} record
@@ -258,15 +267,7 @@ function getRecords_(sheetName) {
       return [];
     }
     const sheet = getSheetOrThrow_(sheetName);
-    const lastColumn = sheet.getLastColumn();
-    if (lastColumn < 1) {
-      throw new Error(
-        `Cannot append to ${sheetName}: the sheet has no header columns.`
-      );
-    }
-    const headers = sheet
-      .getRange(1, 1, 1, lastColumn)
-      .getDisplayValues()[0];
+    const headers = getSheetHeaders_(sheet);
     const primaryHeader = headers[0];
     records.forEach((record) => {
       const primaryValue = Object.prototype.hasOwnProperty.call(

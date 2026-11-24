@@ -1,4 +1,9 @@
-/** Admin authentication and protected admin endpoints. */
+/**
+ * Admin.js
+ * Administrative authentication and protected endpoints.
+ * Scope: Creates, validates, refreshes, and ends administrator sessions; exposes protected maintenance entry points.
+ * Current as of v1.20.
+ */
 const ADMIN_TOKEN_TTL_SECONDS = 1800;
 
 function authenticateAdmin(code) {

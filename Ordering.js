@@ -1,15 +1,9 @@
 /**
- * Ordering.gs
- * LBA Bingo Inventory Management v1.4
- *
- * Records Director-entered inventory orders.
- *
- * V1.4 changes:
- * - Deals per Case is authoritative from PT_Catalog.
- * - The browser no longer supplies or controls Deals per Case.
- * - The entire order is validated before any inventory record is created.
+ * Ordering.js
+ * Administrator-entered stock ordering.
+ * Scope: Validates catalog selections and adds anonymous PT deals or Paper cases with receipt Transactions.
+ * Current as of v1.20.
  */
-
 function recordPTOrder(token, payload) {
   requireAdmin_(token);
   payload = payload || {};

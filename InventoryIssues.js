@@ -1,11 +1,9 @@
 /**
  * InventoryIssues.js
- * LBA Bingo Inventory Management v1.14
- *
- * Read-only issue reporting plus explicit manual resolution.
+ * Inventory Issue reporting and resolution.
+ * Scope: Returns browser-safe issue data and records explicit administrator resolutions.
+ * Current as of v1.20.
  */
-
-
 function serializeInventoryIssueDate_(value) {
   if (!value) return '';
   if (value instanceof Date) {

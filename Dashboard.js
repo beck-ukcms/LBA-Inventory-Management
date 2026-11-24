@@ -1,4 +1,9 @@
-/** Dashboard and one-stop ordering for Inventory Management v1.13. */
+/**
+ * Dashboard.js
+ * Inventory dashboard and consolidated ordering.
+ * Scope: Calculates rolling usage, presents materialized inventory health, and records multi-product dashboard orders.
+ * Current as of v1.20.
+ */
 const DASHBOARD_SESSION_WINDOW = 10;
 const DASHBOARD_SESSIONS_PER_WEEK = 3;
 
@@ -98,15 +103,6 @@ function getRecentDashboardTransactions_() {
 
 function isActiveCatalogRecord_(record) {
   return record.Active === true || String(record.Active).toLowerCase() === 'true';
-}
-
-function getRecentProcessedSessionIds_(transactions) {
-  const markers = transactions.filter((transaction) => {
-    return String(transaction.Inventory_Type) === 'System' &&
-      String(transaction.Transaction_Type) === 'Session Processed' &&
-      normalizeText_(transaction.Session_ID);
-  }).sort((a, b) => new Date(b.Effective_Date) - new Date(a.Effective_Date));
-  return [...new Set(markers.map((marker) => String(marker.Session_ID)))].slice(0, DASHBOARD_SESSION_WINDOW);
 }
 
 function placeDashboardOrder(adminCode, order) {

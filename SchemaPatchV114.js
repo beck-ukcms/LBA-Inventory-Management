@@ -1,5 +1,8 @@
 /**
- * One-time V1.14 migration for Inventory_Issues resolution history.
+ * SchemaPatchV114.js
+ * One-time v1.14 schema migration.
+ * Scope: Adds Inventory_Issues resolution-history columns and extends the native Table.
+ * Current as of v1.20.
  */
 function applySchemaV114Patch() {
   const sheet = getSheetOrThrow_('Inventory_Issues');

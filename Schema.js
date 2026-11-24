@@ -1,16 +1,17 @@
 /**
- * Schema.gs
- * LBA Bingo Inventory schema v1
- *
- * This module permanently defines, initializes, and validates the v1 schema.
- * It requires the Advanced Google Sheets service (Sheets API v4):
- * Apps Script editor > Services > + > Google Sheets API > Add.
- *
- * IMPORTANT:
- * - initializeInventoryWorkbook() is intended for a new/blank workbook.
- * - It will not overwrite an existing schema sheet.
+ * Schema.js
+ * Inventory workbook schema definition and maintenance.
+ * Scope: Initializes, validates, repairs, formats, and configures native Google Sheets Tables for the inventory workbook.
+ * Current as of v1.20.
+ */
+
+/**
+ * Operational requirements:
+ * - The Advanced Google Sheets service (Sheets API v4) must remain enabled.
+ * - initializeInventoryWorkbook() is intended only for a new or blank workbook.
+ * - Initialization will not overwrite an existing schema sheet.
  * - Do not rerun initialization against a live inventory workbook.
- * - Use future migration functions for structural changes after go-live.
+ * - Use versioned migration functions for structural changes after go-live.
  */
 
 const INVENTORY_SCHEMA_V1 = Object.freeze({
@@ -417,6 +418,7 @@ function initializeOneSheet_(sheet, sheetName, definition) {
   const headers = definition.headers;
   ensureSheetSize_(sheet, INVENTORY_SCHEMA_V1.tableRows, Math.max(headers.length, 3));
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  invalidateInventoryHeaderCache_(sheet);
   sheet.getRange(1, 1, 1, headers.length)
     .setFontWeight('bold')
     .setFontColor('#ffffff')

@@ -1,4 +1,9 @@
-/** PT and Paper catalog operations. Only this module writes catalog rows. */
+/**
+ * Catalog.js
+ * PT and Paper catalog management.
+ * Scope: Resolves PT form aliases to PT_Game_ID and creates, updates, and serves catalog records.
+ * Current as of v1.20.
+ */
 const PT_GAME_TYPES = ['Daub', 'Horse Race', 'Under Seal', 'Mixed', 'Other'];
 function getPTCatalog_() {
   return getRecords_('PT_Catalog');

@@ -1,9 +1,8 @@
 /**
- * One-time V1.15 schema expansion and balance initialization.
- *
- * The function is idempotent. It may be rerun after a prior interrupted
- * attempt. Existing V1.15 columns are retained and balances are rebuilt from
- * the authoritative Transactions ledger.
+ * SchemaPatchV115.js
+ * One-time v1.15 schema migration.
+ * Scope: Adds materialized inventory-balance columns and initializes their values from authoritative records.
+ * Current as of v1.20.
  */
 function applySchemaV115Patch() {
   const additions = {
