@@ -15,7 +15,7 @@
  */
 
 const INVENTORY_SCHEMA_V1 = Object.freeze({
-  version: '1',
+  version: '2.0',
   tableRows: 500,
 
   sheets: Object.freeze({
@@ -253,7 +253,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       widths: [245, 390, 420],
       dropdowns: {}, checkboxes: [], integers: [], decimals: [], currency: [], percent: [], formulas: {},
       initialRows: [
-        ['Schema_Version', '1', 'Current inventory workbook schema version.'],
+        ['Schema_Version', '2.0', 'Current inventory workbook schema version.'],
         ['Inventory_Admin', 'bingo@lafayetteband.org', 'Administrative account for the LBA Bingo inventory system.'],
         ['Inventory_Start_Date', '', 'Go-live date for automated inventory tracking.'],
         ['Default_Usage_Window', '10', 'Default number of recent sessions used for moving usage averages.'],

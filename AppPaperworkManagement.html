@@ -23,6 +23,15 @@
   </div>
 
   <div class="panel">
+    <h3>Planned Sessions</h3>
+    <p class="muted">This manages the existing Sessions sheet in the Volunteer Sign-In spreadsheet.</p>
+    <select id="paperwork-planned-sessions" multiple size="8" aria-label="Planned sessions"></select>
+    <div class="actions" style="margin-top: 12px;">
+      <button class="btn danger" type="button" onclick="removePlannedSessionsFromScreen()">Remove Selected Sessions</button>
+      <button class="btn secondary" type="button" onclick="openModal('paperwork-add-session-modal')">Add Session</button>
+    </div>
+  </div>
+  <div class="panel">
     <h3>Create One Session Manually</h3>
 
     <p>
@@ -131,6 +140,25 @@
   </div>
 </section>
 
+<div id="paperwork-add-session-modal" class="modal">
+  <div class="modal-card">
+    <button class="close" type="button" onclick="closeModal('paperwork-add-session-modal')">×</button>
+    <h2>Add Planned Session</h2>
+    <label for="paperwork-add-session-date">Session Date</label>
+    <input id="paperwork-add-session-date" type="date">
+    <label for="paperwork-add-session-type">Session Type</label>
+    <select id="paperwork-add-session-type">
+      <option value="Thursday">Thursday</option>
+      <option value="Friday">Friday</option>
+      <option value="Sunday">Sunday</option>
+    </select>
+    <div id="paperwork-add-session-status" class="status"></div>
+    <div class="actions" style="margin-top: 16px;">
+      <button class="btn" type="button" onclick="addPlannedSessionFromScreen()">Add Session</button>
+      <button class="btn secondary" type="button" onclick="closeModal('paperwork-add-session-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
 <style>
   .paperwork-groups {
     display: grid;
@@ -206,6 +234,7 @@
       clearStatus('paperwork-status');
       try {
         const data = await server('getPaperworkAppData', ADMIN_TOKEN);
+        renderPlannedSessions(data.plannedSessions);
         renderPaperworkSessions(data.sessions);
         renderPaperworkTrigger(data.trigger);
       } catch (error) {
@@ -215,7 +244,53 @@
     }
 
 
-  function renderPaperworkTrigger(trigger) {
+  function renderPlannedSessions(sessions) {
+  const select = $('paperwork-planned-sessions');
+  select.innerHTML = (sessions || []).map((session) => {
+    const state = session.active ? '' : ' [inactive]';
+    return `<option value="${escapeHtml(session.sessionId)}">${escapeHtml(session.displayDate)} - ${escapeHtml(session.label)}${state}</option>`;
+  }).join('');
+}
+
+async function addPlannedSessionFromScreen() {
+  clearStatus('paperwork-add-session-status');
+  try {
+    const sessions = await server(
+      'addManagedPaperworkSession',
+      ADMIN_TOKEN,
+      $('paperwork-add-session-date').value,
+      $('paperwork-add-session-type').value
+    );
+    renderPlannedSessions(sessions);
+    closeModal('paperwork-add-session-modal');
+    setStatus('paperwork-status', 'Planned session added.');
+  } catch (error) {
+    setStatus('paperwork-add-session-status', error.message, true);
+  }
+}
+
+async function removePlannedSessionsFromScreen() {
+  const sessionIds = [...$('paperwork-planned-sessions').selectedOptions]
+    .map((option) => option.value);
+  if (!sessionIds.length) {
+    setStatus('paperwork-status', 'Select at least one planned session to remove.', true);
+    return;
+  }
+  if (!window.confirm(`Remove ${sessionIds.length} selected session(s) from the planning list?`)) return;
+  try {
+    const sessions = await server(
+      'removeManagedPaperworkSessions',
+      ADMIN_TOKEN,
+      sessionIds
+    );
+    renderPlannedSessions(sessions);
+    setStatus('paperwork-status', `${sessionIds.length} planned session(s) removed.`);
+  } catch (error) {
+    setStatus('paperwork-status', error.message, true);
+  }
+}
+
+function renderPaperworkTrigger(trigger) {
     const element = $('paperwork-trigger-status');
 
     if (trigger.installed) {

@@ -36,6 +36,7 @@ function getPaperworkAppData(token) {
   validatePaperworkConfiguration_();
   return {
     sessions: scanWeeklyPaperworkFolders_(),
+    plannedSessions: listManagedPaperworkSessions_(),
     trigger: getDailyPaperworkTriggerStatus_()
   };
 }
@@ -132,6 +133,7 @@ function dailyPaperworkMaintenance() {
 
   try {
     const today = paperworkToday_();
+    const planningResult = extendPaperworkSessionPlan_(today);
     const archiveResults = archivePastSessionPaperwork_(today);
     const registry = getPaperworkSessionsRegistry_();
 
@@ -146,6 +148,7 @@ function dailyPaperworkMaintenance() {
 
     if (todayRecords.length === 0) {
       return {
+        planningResult: planningResult,
         archiveResults: archiveResults,
         creationResult: null,
         message:
@@ -170,6 +173,7 @@ function dailyPaperworkMaintenance() {
     );
 
     return {
+      planningResult: planningResult,
       archiveResults: archiveResults,
       creationResult: creationResult,
       message: creationResult.message
@@ -725,7 +729,24 @@ function archiveOneSession_(date, label, sessionId) {
       };
     }
 
-    folder.moveTo(getUniquePaperworkArchiveQuarterFolder_(date));
+    const completedFile = findUniquePaperworkSheet_(folder, `LBA-Bingo_${dateCode}`);
+    if (!completedFile) throw new Error('The completed paperwork spreadsheet could not be found.');
+    const completedSpreadsheet = SpreadsheetApp.openById(completedFile.getId());
+    const archivedSessionRecord = buildArchivedSessionRecord_(
+      {date: date, label: label, sessionId: sessionId},
+      inventoryResult,
+      completedSpreadsheet
+    );
+    const archiveFolder = getUniquePaperworkArchiveQuarterFolder_(date);
+    folder.moveTo(archiveFolder);
+    try {
+      appendArchivedSession_(archivedSessionRecord);
+    } catch (sessionError) {
+      folder.moveTo(weeklyParent);
+      throw new Error(
+        `Archived-session summary failed and the folder was returned to the weekly folder: ${sessionError.message}`
+      );
+    }
 
     const issueCount = Number(inventoryResult.issues || 0);
     return {
@@ -898,6 +919,77 @@ function generatePaperworkSessionId_(date) {
   return `${formatPaperworkMMDDYY_(date)}-${suffix}`;
 }
 
+
+function listManagedPaperworkSessions_() {
+  const registry = getPaperworkSessionsRegistry_();
+  return getPaperworkSessionRecords_(registry)
+    .filter((record) => record.date)
+    .map((record) => ({
+      sessionId: record.sessionId,
+      date: formatPaperworkIsoDate_(record.date),
+      displayDate: formatPaperworkDisplayDate_(record.date),
+      label: record.label,
+      active: String(record.active).toLowerCase() !== 'false'
+    }))
+    .sort((first, second) => first.date.localeCompare(second.date));
+}
+
+function addManagedPaperworkSession(token, dateString, label) {
+  requireAdmin_(token);
+  validatePaperworkLabel_(label);
+  const date = parsePaperworkIsoDate_(dateString);
+  if (!date) throw new Error('Please select a valid session date.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const registry = getPaperworkSessionsRegistry_();
+    if (findPaperworkSessionRecords_(registry, date, label).length) {
+      throw new Error('That session date and type already exist.');
+    }
+    appendPaperworkSessionRow_(registry, date, label);
+    return listManagedPaperworkSessions_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function removeManagedPaperworkSessions(token, sessionIds) {
+  requireAdmin_(token);
+  const ids = new Set((sessionIds || []).map(normalizeText_).filter(Boolean));
+  if (!ids.size) throw new Error('Select at least one session to remove.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const registry = getPaperworkSessionsRegistry_();
+    const rows = getPaperworkSessionRecords_(registry)
+      .filter((record) => ids.has(record.sessionId))
+      .map((record) => record.rowNumber)
+      .sort((first, second) => second - first);
+    if (rows.length !== ids.size) {
+      throw new Error('One or more selected sessions no longer exist. Reload and try again.');
+    }
+    rows.forEach((rowNumber) => registry.deleteRow(rowNumber));
+    return listManagedPaperworkSessions_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function extendPaperworkSessionPlan_(today) {
+  const label = ({4: 'Thursday', 5: 'Friday', 0: 'Sunday'})[today.getDay()] || '';
+  if (!label) return {created: false};
+  const futureDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 84);
+  const registry = getPaperworkSessionsRegistry_();
+  const matches = findPaperworkSessionRecords_(registry, futureDate, label);
+  if (matches.length > 1) {
+    throw new Error(`Multiple planned sessions already exist for ${formatPaperworkIsoDate_(futureDate)} ${label}.`);
+  }
+  if (matches.length === 1) {
+    return {created: false, date: formatPaperworkIsoDate_(futureDate), label: label};
+  }
+  appendPaperworkSessionRow_(registry, futureDate, label);
+  return {created: true, date: formatPaperworkIsoDate_(futureDate), label: label};
+}
 
 function getPaperworkTemplates_() {
   const folder = DriveApp.getFolderById(
@@ -1261,6 +1353,7 @@ function processSessionInventoryBeforeArchive_(context) {
       ptTransactions: ptResult.transactions,
       paperIssues: paperResult.issues,
       ptIssues: ptResult.issues,
+      ptSalesByGame: ptResult.salesByGame,
       issues: paperResult.issues + ptResult.issues,
       message: 'Session inventory processing completed.'
     };
@@ -1498,6 +1591,7 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
   const transactions = [];
   const issues = [];
   const balanceDeltas = new Map();
+  const salesByGame = {};
 
   observations.forEach((observation) => {
     if (
@@ -1675,6 +1769,10 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
       source: SESSION_PROCESSING_SOURCE,
       notes: notes
     });
+    if (quantityChange === -1) {
+      const salesGameId = String(deal.PT_Game_ID);
+      salesByGame[salesGameId] = (salesByGame[salesGameId] || 0) + 1;
+    }
   });
 
   createInventoryIssues_(issues);
@@ -1684,7 +1782,8 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
 
   return {
     transactions: transactions.length,
-    issues: issues.length
+    issues: issues.length,
+    salesByGame: salesByGame
   };
 }
 

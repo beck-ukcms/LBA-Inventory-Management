@@ -7,7 +7,7 @@
 <section id="dashboard-screen" class="screen">
   <div class="section-title"><div><h2>Inventory Dashboard</h2><p class="muted">Active products, rolling sales, and weekly ordering.</p></div><button class="btn secondary" type="button" onclick="showScreen('home-screen')">Main Menu</button></div>
   <div id="dashboard-status" class="status"></div>
-  <div class="panel"><h3>Pulltabs</h3><p class="muted">Sold/Week is normalized to three sessions per week using the most recent ten successfully processed sessions.</p><div class="table-scroll"><table><thead><tr><th>Game (Form #)</th><th>On Hand (Target)</th><th>Bundled (Target)</th><th>Sold/Week</th><th>Net Profit/$</th><th>Deals to Order</th></tr></thead><tbody id="dashboard-pt-rows"></tbody></table></div></div>
+  <div class="panel"><h3>Pulltabs</h3><p class="muted">Sold/Week uses the latest four archived Thursday, four Friday, and four Sunday sessions. Targets are desired quantities after the most recently archived session.</p><div class="table-scroll"><table><thead><tr><th>Game (Form #)</th><th>On Hand (Target)</th><th>Bundled (Target)</th><th>Sold/Week</th><th>Net Profit/$</th><th>Deals to Order</th></tr></thead><tbody id="dashboard-pt-rows"></tbody></table></div></div>
   <div class="panel"><h3>Paper</h3><div class="table-scroll"><table><thead><tr><th>Paper</th><th>Packs On Hand (Target)</th><th>Sold/Week</th><th>Net Profit/$</th><th>Cases to Order</th></tr></thead><tbody id="dashboard-paper-rows"></tbody></table></div></div>
   <div class="actions"><button class="btn gold" type="button" onclick="reviewDashboardOrder()">Place Order</button></div>
 </section>

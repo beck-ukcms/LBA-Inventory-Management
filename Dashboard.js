@@ -4,103 +4,64 @@
  * Scope: Calculates rolling usage, presents materialized inventory health, and records multi-product dashboard orders.
  * Current as of v1.20.
  */
-const DASHBOARD_SESSION_WINDOW = 10;
 const DASHBOARD_SESSIONS_PER_WEEK = 3;
-
 function getDashboardData() {
   const games = getPTCatalog_().filter(isActiveCatalogRecord_);
   const papers = getPaperCatalog_().filter(isActiveCatalogRecord_);
-  const recent = getRecentDashboardTransactions_();
-  const recentSessionIds = recent.sessionIds;
-  const recentSet = new Set(recentSessionIds);
-  const ptSold = new Map();
+  const archivedSessions = getArchivedSessions_();
+  const selectedSessions = selectDashboardSessionWindow_(archivedSessions);
+  const ptSoldPerWeek = summarizePTSalesPerWeek_(archivedSessions);
+  const latestSession = getMostRecentArchivedSession_(archivedSessions);
+  const latestSessionType = latestSession ? String(latestSession.Session_Type) : '';
+  const selectedIds = new Set(selectedSessions.map((row) => String(row.Session_ID)));
   const paperSold = new Map();
-  recent.transactions.forEach((transaction) => {
-    if (
-      String(transaction.Transaction_Type) !== 'Sold' ||
-      !recentSet.has(String(transaction.Session_ID))
-    ) return;
-    const key = String(transaction.Product_ID);
-    if (String(transaction.Inventory_Type) === 'PT') {
-      ptSold.set(key, (ptSold.get(key) || 0) + 1);
-    }
-    if (String(transaction.Inventory_Type) === 'Paper') {
-      paperSold.set(
-        key,
-        (paperSold.get(key) || 0) - Number(transaction.Quantity_Change || 0)
-      );
-    }
-  });
-  const divisor = recentSessionIds.length || 0;
-  const pt = games.map((game) => ({
-    gameId: String(game.PT_Game_ID),
-    formNumber: normalizeFormNumber_(game.Primary_Form_Number),
-    label: `${game.Game_Name} (${normalizeFormNumber_(game.Primary_Form_Number)})`,
-    onHand: Number(game.Qty_On_Hand || 0),
-    targetOnHand: Number(game.Target_On_Hand || 0),
-    bundled: Number(game.Qty_Bundled || 0),
-    targetBundled: Number(game.Target_Bundled || 0),
-    soldPerWeek: divisor
-      ? (ptSold.get(String(game.PT_Game_ID)) || 0) / divisor * DASHBOARD_SESSIONS_PER_WEEK
-      : 0,
-    netProfitPerDollar: Number(game.Net_Income_Per_Patron_Dollar || 0)
-  })).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
+  if (selectedIds.size) {
+    visitTransactionsNewestFirst_(
+      ['Inventory_Type', 'Product_ID', 'Transaction_Type', 'Quantity_Change', 'Session_ID'],
+      (transaction) => {
+        const sessionId = String(transaction.Session_ID || '');
+        if (!selectedIds.has(sessionId)) return false;
+        if (String(transaction.Inventory_Type) === 'Paper' &&
+            String(transaction.Transaction_Type) === 'Sold') {
+          const key = String(transaction.Product_ID);
+          paperSold.set(key, (paperSold.get(key) || 0) - Number(transaction.Quantity_Change || 0));
+        }
+        return false;
+      }
+    );
+  }
+  const pt = games.map((game) => {
+    const targets = desiredPTTargetsForSession_(game, latestSessionType);
+    return {
+      gameId: String(game.PT_Game_ID),
+      formNumber: normalizeFormNumber_(game.Primary_Form_Number),
+      label: `${game.Game_Name} (${normalizeFormNumber_(game.Primary_Form_Number)})`,
+      onHand: Number(game.Qty_On_Hand || 0),
+      targetOnHand: targets.onHand,
+      bundled: Number(game.Qty_Bundled || 0),
+      targetBundled: targets.bundled,
+      soldPerWeek: ptSoldPerWeek.get(String(game.PT_Game_ID)) || 0,
+      netProfitPerDollar: Number(game.Net_Income_Per_Patron_Dollar || 0)
+    };
+  }).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
   const paper = papers.map((row) => ({
     paperId: String(row.Paper_ID),
     label: `${row.Short_Name} - ${row.Description}`,
     packsOnHand: Number(row.Qty_On_Hand || 0),
     targetOnHand: Number(row.Target_On_Hand || 0),
-    soldPerWeek: divisor
-      ? (paperSold.get(String(row.Paper_ID)) || 0) / divisor * DASHBOARD_SESSIONS_PER_WEEK
+    soldPerWeek: selectedSessions.length
+      ? (paperSold.get(String(row.Paper_ID)) || 0) / ARCHIVED_SESSION_WINDOW_PER_TYPE
       : 0,
     netProfitPerDollar: Number(row.Net_Income_Per_Patron_Dollar || 0),
     packsPerCase: Number(row.Packs_Per_Case || 0)
   })).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
-  return {pt, paper, sessionCount: recentSessionIds.length};
-}
-
-
-function getRecentDashboardTransactions_() {
-  const transactions = [];
-  const processedSessionIds = [];
-  const processedSet = new Set();
-  let boundaryFound = false;
-  visitTransactionsNewestFirst_(
-    [
-      'Effective_Date',
-      'Inventory_Type',
-      'Product_ID',
-      'Transaction_Type',
-      'Quantity_Change',
-      'Session_ID'
-    ],
-    (transaction) => {
-      const isProcessedMarker =
-        String(transaction.Inventory_Type) === 'System' &&
-        String(transaction.Transaction_Type) === 'Session Processed' &&
-        normalizeText_(transaction.Session_ID);
-      if (isProcessedMarker) {
-        const sessionId = String(transaction.Session_ID);
-        if (!processedSet.has(sessionId)) {
-          if (processedSessionIds.length >= DASHBOARD_SESSION_WINDOW) {
-            boundaryFound = true;
-            return true;
-          }
-          processedSet.add(sessionId);
-          processedSessionIds.push(sessionId);
-        }
-      }
-      transactions.push(transaction);
-      return false;
-    }
-  );
   return {
-    transactions: transactions,
-    sessionIds: processedSessionIds,
-    boundaryFound: boundaryFound
+    pt: pt,
+    paper: paper,
+    sessionCount: selectedSessions.length,
+    latestSessionType: latestSessionType
   };
 }
-
 function isActiveCatalogRecord_(record) {
   return record.Active === true || String(record.Active).toLowerCase() === 'true';
 }
