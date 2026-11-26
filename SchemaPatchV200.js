@@ -5,11 +5,15 @@
 function applySchemaV200Patch() {
   assertAdvancedSheetsService_();
   const spreadsheet = getInventorySpreadsheet_();
-  if (spreadsheet.getSheetByName('Sessions')) {
-    return {ok: true, changed: false, message: 'Sessions already exists.'};
-  }
   const definition = INVENTORY_SCHEMA_V1.sheets.Sessions;
-  const sheet = spreadsheet.insertSheet('Sessions');
+  if (!definition || !Array.isArray(definition.headers)) {
+    throw new Error('The v2.0 Sessions schema definition is missing from Schema.js.');
+  }
+  let sheet = spreadsheet.getSheetByName('Sessions');
+  if (sheet && sheet.getLastRow() > 0) {
+    return {ok: true, changed: false, message: 'Sessions already exists and contains data.'};
+  }
+  if (!sheet) sheet = spreadsheet.insertSheet('Sessions');
   initializeOneSheet_(sheet, 'Sessions', definition);
   SpreadsheetApp.flush();
   const columnProperties = buildTableColumnProperties_(definition);
@@ -18,7 +22,7 @@ function applySchemaV200Patch() {
     range: {
       sheetId: sheet.getSheetId(),
       startRowIndex: 0,
-      endRowIndex: 20,
+      endRowIndex: INVENTORY_SCHEMA_V1.tableRows,
       startColumnIndex: 0,
       endColumnIndex: definition.headers.length
     },

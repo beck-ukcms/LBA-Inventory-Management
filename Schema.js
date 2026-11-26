@@ -150,6 +150,34 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       timestamps: ['Balance_Updated_At'],
     },
 
+    Sessions: {
+      tableName: 'Sessions_Table',
+      headers: [
+        'Session_ID',
+        'Session_Date',
+        'Session_Type',
+        'Archived_At',
+        'Attendance',
+        'PT_Deals_Sold',
+        'Est_Partner_Sharing',
+        'Est_LBA_Profit',
+        'PT_Sales_By_Game_JSON',
+        'Source_Spreadsheet_ID',
+      ],
+      widths: [165, 115, 115, 165, 105, 120, 155, 140, 420, 190],
+      dropdowns: {
+        Session_Type: ['Thursday', 'Friday', 'Sunday'],
+      },
+      checkboxes: [],
+      integers: ['Attendance', 'PT_Deals_Sold'],
+      decimals: [],
+      currency: ['Est_Partner_Sharing', 'Est_LBA_Profit'],
+      percent: [],
+      dates: ['Session_Date'],
+      timestamps: ['Archived_At'],
+      formulas: {},
+    },
+
     Transactions: {
       tableName: 'Transactions_Table',
       headers: [

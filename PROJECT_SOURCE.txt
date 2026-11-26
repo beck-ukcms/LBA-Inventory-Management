@@ -1,5 +1,5 @@
 ================================================================
-GIT COMMIT: e3ed817865764ab92517c8405073c7113fb8c05b
+GIT COMMIT: 0520f9fdef12d77dc29831e1afcd04f98fcffa26
 ================================================================
 
 ================================================================
@@ -733,7 +733,7 @@ FILE: AppDashboard.html
 <section id="dashboard-screen" class="screen">
   <div class="section-title"><div><h2>Inventory Dashboard</h2><p class="muted">Active products, rolling sales, and weekly ordering.</p></div><button class="btn secondary" type="button" onclick="showScreen('home-screen')">Main Menu</button></div>
   <div id="dashboard-status" class="status"></div>
-  <div class="panel"><h3>Pulltabs</h3><p class="muted">Sold/Week is normalized to three sessions per week using the most recent ten successfully processed sessions.</p><div class="table-scroll"><table><thead><tr><th>Game (Form #)</th><th>On Hand (Target)</th><th>Bundled (Target)</th><th>Sold/Week</th><th>Net Profit/$</th><th>Deals to Order</th></tr></thead><tbody id="dashboard-pt-rows"></tbody></table></div></div>
+  <div class="panel"><h3>Pulltabs</h3><p class="muted">Sold/Week uses the latest four archived Thursday, four Friday, and four Sunday sessions. Targets are desired quantities after the most recently archived session.</p><div class="table-scroll"><table><thead><tr><th>Game (Form #)</th><th>On Hand (Target)</th><th>Bundled (Target)</th><th>Sold/Week</th><th>Net Profit/$</th><th>Deals to Order</th></tr></thead><tbody id="dashboard-pt-rows"></tbody></table></div></div>
   <div class="panel"><h3>Paper</h3><div class="table-scroll"><table><thead><tr><th>Paper</th><th>Packs On Hand (Target)</th><th>Sold/Week</th><th>Net Profit/$</th><th>Cases to Order</th></tr></thead><tbody id="dashboard-paper-rows"></tbody></table></div></div>
   <div class="actions"><button class="btn gold" type="button" onclick="reviewDashboardOrder()">Place Order</button></div>
 </section>
@@ -3604,6 +3604,15 @@ FILE: AppPaperworkManagement.html
   </div>
 
   <div class="panel">
+    <h3>Planned Sessions</h3>
+    <p class="muted">This manages the existing Sessions sheet in the Volunteer Sign-In spreadsheet.</p>
+    <select id="paperwork-planned-sessions" multiple size="8" aria-label="Planned sessions"></select>
+    <div class="actions" style="margin-top: 12px;">
+      <button class="btn danger" type="button" onclick="removePlannedSessionsFromScreen()">Remove Selected Sessions</button>
+      <button class="btn secondary" type="button" onclick="openModal('paperwork-add-session-modal')">Add Session</button>
+    </div>
+  </div>
+  <div class="panel">
     <h3>Create One Session Manually</h3>
 
     <p>
@@ -3712,6 +3721,25 @@ FILE: AppPaperworkManagement.html
   </div>
 </section>
 
+<div id="paperwork-add-session-modal" class="modal">
+  <div class="modal-card">
+    <button class="close" type="button" onclick="closeModal('paperwork-add-session-modal')">×</button>
+    <h2>Add Planned Session</h2>
+    <label for="paperwork-add-session-date">Session Date</label>
+    <input id="paperwork-add-session-date" type="date">
+    <label for="paperwork-add-session-type">Session Type</label>
+    <select id="paperwork-add-session-type">
+      <option value="Thursday">Thursday</option>
+      <option value="Friday">Friday</option>
+      <option value="Sunday">Sunday</option>
+    </select>
+    <div id="paperwork-add-session-status" class="status"></div>
+    <div class="actions" style="margin-top: 16px;">
+      <button class="btn" type="button" onclick="addPlannedSessionFromScreen()">Add Session</button>
+      <button class="btn secondary" type="button" onclick="closeModal('paperwork-add-session-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
 <style>
   .paperwork-groups {
     display: grid;
@@ -3787,6 +3815,7 @@ FILE: AppPaperworkManagement.html
       clearStatus('paperwork-status');
       try {
         const data = await server('getPaperworkAppData', ADMIN_TOKEN);
+        renderPlannedSessions(data.plannedSessions);
         renderPaperworkSessions(data.sessions);
         renderPaperworkTrigger(data.trigger);
       } catch (error) {
@@ -3796,7 +3825,53 @@ FILE: AppPaperworkManagement.html
     }
 
 
-  function renderPaperworkTrigger(trigger) {
+  function renderPlannedSessions(sessions) {
+  const select = $('paperwork-planned-sessions');
+  select.innerHTML = (sessions || []).map((session) => {
+    const state = session.active ? '' : ' [inactive]';
+    return `<option value="${escapeHtml(session.sessionId)}">${escapeHtml(session.displayDate)} - ${escapeHtml(session.label)}${state}</option>`;
+  }).join('');
+}
+
+async function addPlannedSessionFromScreen() {
+  clearStatus('paperwork-add-session-status');
+  try {
+    const sessions = await server(
+      'addManagedPaperworkSession',
+      ADMIN_TOKEN,
+      $('paperwork-add-session-date').value,
+      $('paperwork-add-session-type').value
+    );
+    renderPlannedSessions(sessions);
+    closeModal('paperwork-add-session-modal');
+    setStatus('paperwork-status', 'Planned session added.');
+  } catch (error) {
+    setStatus('paperwork-add-session-status', error.message, true);
+  }
+}
+
+async function removePlannedSessionsFromScreen() {
+  const sessionIds = [...$('paperwork-planned-sessions').selectedOptions]
+    .map((option) => option.value);
+  if (!sessionIds.length) {
+    setStatus('paperwork-status', 'Select at least one planned session to remove.', true);
+    return;
+  }
+  if (!window.confirm(`Remove ${sessionIds.length} selected session(s) from the planning list?`)) return;
+  try {
+    const sessions = await server(
+      'removeManagedPaperworkSessions',
+      ADMIN_TOKEN,
+      sessionIds
+    );
+    renderPlannedSessions(sessions);
+    setStatus('paperwork-status', `${sessionIds.length} planned session(s) removed.`);
+  } catch (error) {
+    setStatus('paperwork-status', error.message, true);
+  }
+}
+
+function renderPaperworkTrigger(trigger) {
     const element = $('paperwork-trigger-status');
 
     if (trigger.installed) {
@@ -5185,103 +5260,64 @@ FILE: Dashboard.js
  * Scope: Calculates rolling usage, presents materialized inventory health, and records multi-product dashboard orders.
  * Current as of v1.20.
  */
-const DASHBOARD_SESSION_WINDOW = 10;
 const DASHBOARD_SESSIONS_PER_WEEK = 3;
-
 function getDashboardData() {
   const games = getPTCatalog_().filter(isActiveCatalogRecord_);
   const papers = getPaperCatalog_().filter(isActiveCatalogRecord_);
-  const recent = getRecentDashboardTransactions_();
-  const recentSessionIds = recent.sessionIds;
-  const recentSet = new Set(recentSessionIds);
-  const ptSold = new Map();
+  const archivedSessions = getArchivedSessions_();
+  const selectedSessions = selectDashboardSessionWindow_(archivedSessions);
+  const ptSoldPerWeek = summarizePTSalesPerWeek_(archivedSessions);
+  const latestSession = getMostRecentArchivedSession_(archivedSessions);
+  const latestSessionType = latestSession ? String(latestSession.Session_Type) : '';
+  const selectedIds = new Set(selectedSessions.map((row) => String(row.Session_ID)));
   const paperSold = new Map();
-  recent.transactions.forEach((transaction) => {
-    if (
-      String(transaction.Transaction_Type) !== 'Sold' ||
-      !recentSet.has(String(transaction.Session_ID))
-    ) return;
-    const key = String(transaction.Product_ID);
-    if (String(transaction.Inventory_Type) === 'PT') {
-      ptSold.set(key, (ptSold.get(key) || 0) + 1);
-    }
-    if (String(transaction.Inventory_Type) === 'Paper') {
-      paperSold.set(
-        key,
-        (paperSold.get(key) || 0) - Number(transaction.Quantity_Change || 0)
-      );
-    }
-  });
-  const divisor = recentSessionIds.length || 0;
-  const pt = games.map((game) => ({
-    gameId: String(game.PT_Game_ID),
-    formNumber: normalizeFormNumber_(game.Primary_Form_Number),
-    label: `${game.Game_Name} (${normalizeFormNumber_(game.Primary_Form_Number)})`,
-    onHand: Number(game.Qty_On_Hand || 0),
-    targetOnHand: Number(game.Target_On_Hand || 0),
-    bundled: Number(game.Qty_Bundled || 0),
-    targetBundled: Number(game.Target_Bundled || 0),
-    soldPerWeek: divisor
-      ? (ptSold.get(String(game.PT_Game_ID)) || 0) / divisor * DASHBOARD_SESSIONS_PER_WEEK
-      : 0,
-    netProfitPerDollar: Number(game.Net_Income_Per_Patron_Dollar || 0)
-  })).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
+  if (selectedIds.size) {
+    visitTransactionsNewestFirst_(
+      ['Inventory_Type', 'Product_ID', 'Transaction_Type', 'Quantity_Change', 'Session_ID'],
+      (transaction) => {
+        const sessionId = String(transaction.Session_ID || '');
+        if (!selectedIds.has(sessionId)) return false;
+        if (String(transaction.Inventory_Type) === 'Paper' &&
+            String(transaction.Transaction_Type) === 'Sold') {
+          const key = String(transaction.Product_ID);
+          paperSold.set(key, (paperSold.get(key) || 0) - Number(transaction.Quantity_Change || 0));
+        }
+        return false;
+      }
+    );
+  }
+  const pt = games.map((game) => {
+    const targets = desiredPTTargetsForSession_(game, latestSessionType);
+    return {
+      gameId: String(game.PT_Game_ID),
+      formNumber: normalizeFormNumber_(game.Primary_Form_Number),
+      label: `${game.Game_Name} (${normalizeFormNumber_(game.Primary_Form_Number)})`,
+      onHand: Number(game.Qty_On_Hand || 0),
+      targetOnHand: targets.onHand,
+      bundled: Number(game.Qty_Bundled || 0),
+      targetBundled: targets.bundled,
+      soldPerWeek: ptSoldPerWeek.get(String(game.PT_Game_ID)) || 0,
+      netProfitPerDollar: Number(game.Net_Income_Per_Patron_Dollar || 0)
+    };
+  }).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
   const paper = papers.map((row) => ({
     paperId: String(row.Paper_ID),
     label: `${row.Short_Name} - ${row.Description}`,
     packsOnHand: Number(row.Qty_On_Hand || 0),
     targetOnHand: Number(row.Target_On_Hand || 0),
-    soldPerWeek: divisor
-      ? (paperSold.get(String(row.Paper_ID)) || 0) / divisor * DASHBOARD_SESSIONS_PER_WEEK
+    soldPerWeek: selectedSessions.length
+      ? (paperSold.get(String(row.Paper_ID)) || 0) / ARCHIVED_SESSION_WINDOW_PER_TYPE
       : 0,
     netProfitPerDollar: Number(row.Net_Income_Per_Patron_Dollar || 0),
     packsPerCase: Number(row.Packs_Per_Case || 0)
   })).sort((a, b) => b.soldPerWeek - a.soldPerWeek || a.label.localeCompare(b.label));
-  return {pt, paper, sessionCount: recentSessionIds.length};
-}
-
-
-function getRecentDashboardTransactions_() {
-  const transactions = [];
-  const processedSessionIds = [];
-  const processedSet = new Set();
-  let boundaryFound = false;
-  visitTransactionsNewestFirst_(
-    [
-      'Effective_Date',
-      'Inventory_Type',
-      'Product_ID',
-      'Transaction_Type',
-      'Quantity_Change',
-      'Session_ID'
-    ],
-    (transaction) => {
-      const isProcessedMarker =
-        String(transaction.Inventory_Type) === 'System' &&
-        String(transaction.Transaction_Type) === 'Session Processed' &&
-        normalizeText_(transaction.Session_ID);
-      if (isProcessedMarker) {
-        const sessionId = String(transaction.Session_ID);
-        if (!processedSet.has(sessionId)) {
-          if (processedSessionIds.length >= DASHBOARD_SESSION_WINDOW) {
-            boundaryFound = true;
-            return true;
-          }
-          processedSet.add(sessionId);
-          processedSessionIds.push(sessionId);
-        }
-      }
-      transactions.push(transaction);
-      return false;
-    }
-  );
   return {
-    transactions: transactions,
-    sessionIds: processedSessionIds,
-    boundaryFound: boundaryFound
+    pt: pt,
+    paper: paper,
+    sessionCount: selectedSessions.length,
+    latestSessionType: latestSessionType
   };
 }
-
 function isActiveCatalogRecord_(record) {
   return record.Active === true || String(record.Active).toLowerCase() === 'true';
 }
@@ -8092,6 +8128,7 @@ function getPaperworkAppData(token) {
   validatePaperworkConfiguration_();
   return {
     sessions: scanWeeklyPaperworkFolders_(),
+    plannedSessions: listManagedPaperworkSessions_(),
     trigger: getDailyPaperworkTriggerStatus_()
   };
 }
@@ -8188,6 +8225,7 @@ function dailyPaperworkMaintenance() {
 
   try {
     const today = paperworkToday_();
+    const planningResult = extendPaperworkSessionPlan_(today);
     const archiveResults = archivePastSessionPaperwork_(today);
     const registry = getPaperworkSessionsRegistry_();
 
@@ -8202,6 +8240,7 @@ function dailyPaperworkMaintenance() {
 
     if (todayRecords.length === 0) {
       return {
+        planningResult: planningResult,
         archiveResults: archiveResults,
         creationResult: null,
         message:
@@ -8226,6 +8265,7 @@ function dailyPaperworkMaintenance() {
     );
 
     return {
+      planningResult: planningResult,
       archiveResults: archiveResults,
       creationResult: creationResult,
       message: creationResult.message
@@ -8781,7 +8821,24 @@ function archiveOneSession_(date, label, sessionId) {
       };
     }
 
-    folder.moveTo(getUniquePaperworkArchiveQuarterFolder_(date));
+    const completedFile = findUniquePaperworkSheet_(folder, `LBA-Bingo_${dateCode}`);
+    if (!completedFile) throw new Error('The completed paperwork spreadsheet could not be found.');
+    const completedSpreadsheet = SpreadsheetApp.openById(completedFile.getId());
+    const archivedSessionRecord = buildArchivedSessionRecord_(
+      {date: date, label: label, sessionId: sessionId},
+      inventoryResult,
+      completedSpreadsheet
+    );
+    const archiveFolder = getUniquePaperworkArchiveQuarterFolder_(date);
+    folder.moveTo(archiveFolder);
+    try {
+      appendArchivedSession_(archivedSessionRecord);
+    } catch (sessionError) {
+      folder.moveTo(weeklyParent);
+      throw new Error(
+        `Archived-session summary failed and the folder was returned to the weekly folder: ${sessionError.message}`
+      );
+    }
 
     const issueCount = Number(inventoryResult.issues || 0);
     return {
@@ -8954,6 +9011,77 @@ function generatePaperworkSessionId_(date) {
   return `${formatPaperworkMMDDYY_(date)}-${suffix}`;
 }
 
+
+function listManagedPaperworkSessions_() {
+  const registry = getPaperworkSessionsRegistry_();
+  return getPaperworkSessionRecords_(registry)
+    .filter((record) => record.date)
+    .map((record) => ({
+      sessionId: record.sessionId,
+      date: formatPaperworkIsoDate_(record.date),
+      displayDate: formatPaperworkDisplayDate_(record.date),
+      label: record.label,
+      active: String(record.active).toLowerCase() !== 'false'
+    }))
+    .sort((first, second) => first.date.localeCompare(second.date));
+}
+
+function addManagedPaperworkSession(token, dateString, label) {
+  requireAdmin_(token);
+  validatePaperworkLabel_(label);
+  const date = parsePaperworkIsoDate_(dateString);
+  if (!date) throw new Error('Please select a valid session date.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const registry = getPaperworkSessionsRegistry_();
+    if (findPaperworkSessionRecords_(registry, date, label).length) {
+      throw new Error('That session date and type already exist.');
+    }
+    appendPaperworkSessionRow_(registry, date, label);
+    return listManagedPaperworkSessions_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function removeManagedPaperworkSessions(token, sessionIds) {
+  requireAdmin_(token);
+  const ids = new Set((sessionIds || []).map(normalizeText_).filter(Boolean));
+  if (!ids.size) throw new Error('Select at least one session to remove.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const registry = getPaperworkSessionsRegistry_();
+    const rows = getPaperworkSessionRecords_(registry)
+      .filter((record) => ids.has(record.sessionId))
+      .map((record) => record.rowNumber)
+      .sort((first, second) => second - first);
+    if (rows.length !== ids.size) {
+      throw new Error('One or more selected sessions no longer exist. Reload and try again.');
+    }
+    rows.forEach((rowNumber) => registry.deleteRow(rowNumber));
+    return listManagedPaperworkSessions_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function extendPaperworkSessionPlan_(today) {
+  const label = ({4: 'Thursday', 5: 'Friday', 0: 'Sunday'})[today.getDay()] || '';
+  if (!label) return {created: false};
+  const futureDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 84);
+  const registry = getPaperworkSessionsRegistry_();
+  const matches = findPaperworkSessionRecords_(registry, futureDate, label);
+  if (matches.length > 1) {
+    throw new Error(`Multiple planned sessions already exist for ${formatPaperworkIsoDate_(futureDate)} ${label}.`);
+  }
+  if (matches.length === 1) {
+    return {created: false, date: formatPaperworkIsoDate_(futureDate), label: label};
+  }
+  appendPaperworkSessionRow_(registry, futureDate, label);
+  return {created: true, date: formatPaperworkIsoDate_(futureDate), label: label};
+}
 
 function getPaperworkTemplates_() {
   const folder = DriveApp.getFolderById(
@@ -9317,6 +9445,7 @@ function processSessionInventoryBeforeArchive_(context) {
       ptTransactions: ptResult.transactions,
       paperIssues: paperResult.issues,
       ptIssues: ptResult.issues,
+      ptSalesByGame: ptResult.salesByGame,
       issues: paperResult.issues + ptResult.issues,
       message: 'Session inventory processing completed.'
     };
@@ -9554,6 +9683,7 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
   const transactions = [];
   const issues = [];
   const balanceDeltas = new Map();
+  const salesByGame = {};
 
   observations.forEach((observation) => {
     if (
@@ -9731,6 +9861,10 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
       source: SESSION_PROCESSING_SOURCE,
       notes: notes
     });
+    if (quantityChange === -1) {
+      const salesGameId = String(deal.PT_Game_ID);
+      salesByGame[salesGameId] = (salesByGame[salesGameId] || 0) + 1;
+    }
   });
 
   createInventoryIssues_(issues);
@@ -9740,7 +9874,8 @@ function processSessionPT_(spreadsheet, context, sourceFile) {
 
   return {
     transactions: transactions.length,
-    issues: issues.length
+    issues: issues.length,
+    salesByGame: salesByGame
   };
 }
 
@@ -9777,7 +9912,7 @@ FILE: Schema.js
  */
 
 const INVENTORY_SCHEMA_V1 = Object.freeze({
-  version: '1',
+  version: '2.0',
   tableRows: 500,
 
   sheets: Object.freeze({
@@ -10015,7 +10150,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       widths: [245, 390, 420],
       dropdowns: {}, checkboxes: [], integers: [], decimals: [], currency: [], percent: [], formulas: {},
       initialRows: [
-        ['Schema_Version', '1', 'Current inventory workbook schema version.'],
+        ['Schema_Version', '2.0', 'Current inventory workbook schema version.'],
         ['Inventory_Admin', 'bingo@lafayetteband.org', 'Administrative account for the LBA Bingo inventory system.'],
         ['Inventory_Start_Date', '', 'Go-live date for automated inventory tracking.'],
         ['Default_Usage_Window', '10', 'Default number of recent sessions used for moving usage averages.'],
@@ -10706,6 +10841,192 @@ function applySchemaV115Patch() {
   const result = initializeCurrentBalancesV115();
   result.addedHeaders = addedHeaders;
   return result;
+}
+
+
+================================================================
+FILE: SchemaPatchV200.js
+================================================================
+
+/**
+ * SchemaPatchV200.js
+ * One-time v2.0 migration for archived Sessions analytics.
+ */
+function applySchemaV200Patch() {
+  assertAdvancedSheetsService_();
+  const spreadsheet = getInventorySpreadsheet_();
+  if (spreadsheet.getSheetByName('Sessions')) {
+    return {ok: true, changed: false, message: 'Sessions already exists.'};
+  }
+  const definition = INVENTORY_SCHEMA_V1.sheets.Sessions;
+  const sheet = spreadsheet.insertSheet('Sessions');
+  initializeOneSheet_(sheet, 'Sessions', definition);
+  SpreadsheetApp.flush();
+  const columnProperties = buildTableColumnProperties_(definition);
+  Sheets.Spreadsheets.batchUpdate({requests: [{addTable: {table: {
+    name: definition.tableName,
+    range: {
+      sheetId: sheet.getSheetId(),
+      startRowIndex: 0,
+      endRowIndex: 20,
+      startColumnIndex: 0,
+      endColumnIndex: definition.headers.length
+    },
+    columnProperties: columnProperties
+  }}}]}, spreadsheet.getId());
+  const settings = getRecords_('Settings').find((row) => {
+    return String(row.Setting) === 'Schema_Version';
+  });
+  if (settings) updateRecordRow_('Settings', settings._rowNumber, {Value: '2.0'});
+  SpreadsheetApp.flush();
+  return {ok: true, changed: true, message: 'v2.0 Sessions sheet created.'};
+}
+
+
+================================================================
+FILE: Sessions.js
+================================================================
+
+/**
+ * Sessions.js
+ * Archived-session summaries and rolling dashboard analytics.
+ * Current as of v2.0.
+ */
+const ARCHIVED_SESSIONS_SHEET = 'Sessions';
+const ARCHIVED_SESSION_TYPES = ['Thursday', 'Friday', 'Sunday'];
+const ARCHIVED_SESSION_WINDOW_PER_TYPE = 4;
+
+function getArchivedSessions_() {
+  return getRecords_(ARCHIVED_SESSIONS_SHEET);
+}
+
+function getArchivedSessionPTSalesFromTransactions_(sessionId) {
+  const salesByGame = {};
+  getRecords_('Transactions').forEach((transaction) => {
+    if (String(transaction.Session_ID) !== String(sessionId)) return;
+    if (String(transaction.Inventory_Type) !== 'PT') return;
+    if (!['Opened', 'Sold'].includes(String(transaction.Transaction_Type))) return;
+    if (Number(transaction.Quantity_Change || 0) !== -1) return;
+    const gameId = String(transaction.Product_ID || '');
+    if (gameId) salesByGame[gameId] = (salesByGame[gameId] || 0) + 1;
+  });
+  return salesByGame;
+}
+
+function parseSessionPTSales_(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch (error) {
+    console.warn('Invalid PT_Sales_By_Game_JSON ignored:', error.message);
+    return {};
+  }
+}
+
+function buildArchivedSessionRecord_(context, inventoryResult, spreadsheet) {
+  const summary = readArchivedSessionSummary_(spreadsheet);
+  const suppliedSales = inventoryResult.ptSalesByGame || {};
+  const salesByGame = Object.keys(suppliedSales).length
+    ? Object.assign({}, suppliedSales)
+    : getArchivedSessionPTSalesFromTransactions_(context.sessionId);
+  const totalPTDeals = Object.values(salesByGame).reduce((total, value) => {
+    return total + Number(value || 0);
+  }, 0);
+  return {
+    Session_ID: normalizeText_(context.sessionId),
+    Session_Date: context.date,
+    Session_Type: context.label,
+    Archived_At: now_(),
+    Attendance: summary.attendance,
+    PT_Deals_Sold: totalPTDeals,
+    Est_Partner_Sharing: summary.partnerSharing,
+    Est_LBA_Profit: summary.lbaProfit,
+    PT_Sales_By_Game_JSON: JSON.stringify(salesByGame),
+    Source_Spreadsheet_ID: spreadsheet.getId()
+  };
+}
+
+function readArchivedSessionSummary_(spreadsheet) {
+  const sheet = spreadsheet.getSheetByName('Profit Estimate');
+  if (!sheet) {
+    throw new Error('Required worksheet Profit Estimate is missing.');
+  }
+  const values = sheet.getRange('D7:D35').getValues();
+  return {
+    attendance: values[0][0],
+    partnerSharing: values[27][0],
+    lbaProfit: values[28][0]
+  };
+}
+
+function appendArchivedSession_(record) {
+  const existing = getArchivedSessions_().find((row) => {
+    return String(row.Session_ID) === String(record.Session_ID);
+  });
+  if (existing) {
+    return {created: false, rowNumber: existing._rowNumber};
+  }
+  return {
+    created: true,
+    rowNumber: appendRecord_(ARCHIVED_SESSIONS_SHEET, record)
+  };
+}
+
+function selectDashboardSessionWindow_(sessions) {
+  const selected = [];
+  ARCHIVED_SESSION_TYPES.forEach((sessionType) => {
+    const rows = sessions
+      .filter((row) => String(row.Session_Type) === sessionType)
+      .sort((first, second) => {
+        return sessionDateTime_(second.Session_Date) - sessionDateTime_(first.Session_Date);
+      })
+      .slice(0, ARCHIVED_SESSION_WINDOW_PER_TYPE);
+    selected.push(...rows);
+  });
+  return selected;
+}
+
+function sessionDateTime_(value) {
+  if (value instanceof Date) return value.getTime();
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function summarizePTSalesPerWeek_(sessions) {
+  const totals = new Map();
+  selectDashboardSessionWindow_(sessions).forEach((session) => {
+    const sales = parseSessionPTSales_(session.PT_Sales_By_Game_JSON);
+    Object.entries(sales).forEach(([gameId, quantity]) => {
+      totals.set(gameId, (totals.get(gameId) || 0) + Number(quantity || 0));
+    });
+  });
+  const perWeek = new Map();
+  totals.forEach((quantity, gameId) => {
+    perWeek.set(gameId, quantity / ARCHIVED_SESSION_WINDOW_PER_TYPE);
+  });
+  return perWeek;
+}
+
+function getMostRecentArchivedSession_(sessions) {
+  return sessions.slice().sort((first, second) => {
+    return sessionDateTime_(second.Session_Date) - sessionDateTime_(first.Session_Date) ||
+      sessionDateTime_(second.Archived_At) - sessionDateTime_(first.Archived_At);
+  })[0] || null;
+}
+
+function desiredPTTargetsForSession_(game, sessionType) {
+  const onHandBase = Number(game.Target_On_Hand || 0);
+  const bundledBase = Number(game.Target_Bundled || 0);
+  const onHandMultiplier = {Thursday: 1, Friday: 4 / 5, Sunday: 3 / 5}[sessionType];
+  const bundledMultiplier = {Sunday: 1, Thursday: 2 / 3, Friday: 1 / 3}[sessionType];
+  return {
+    onHand: Math.ceil(onHandBase * (onHandMultiplier == null ? 1 : onHandMultiplier)),
+    bundled: Math.ceil(bundledBase * (bundledMultiplier == null ? 1 : bundledMultiplier))
+  };
 }
 
 
