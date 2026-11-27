@@ -922,8 +922,11 @@ function generatePaperworkSessionId_(date) {
 
 function listManagedPaperworkSessions_() {
   const registry = getPaperworkSessionsRegistry_();
+  const todayTime = paperworkDateOnlyTime_(paperworkToday_());
   return getPaperworkSessionRecords_(registry)
-    .filter((record) => record.date)
+    .filter((record) => {
+      return record.date && paperworkDateOnlyTime_(record.date) >= todayTime;
+    })
     .map((record) => ({
       sessionId: record.sessionId,
       date: formatPaperworkIsoDate_(record.date),

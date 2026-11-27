@@ -15,7 +15,7 @@
  */
 
 const INVENTORY_SCHEMA_V1 = Object.freeze({
-  version: '2.0',
+  version: '2.1',
   tableRows: 500,
 
   sheets: Object.freeze({
@@ -158,7 +158,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
         'Session_Type',
         'Archived_At',
         'Attendance',
-        'PT_Deals_Sold',
+        'PT_Tickets_Sold',
         'Est_Partner_Sharing',
         'Est_LBA_Profit',
         'PT_Sales_By_Game_JSON',
@@ -169,7 +169,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
         Session_Type: ['Thursday', 'Friday', 'Sunday'],
       },
       checkboxes: [],
-      integers: ['Attendance', 'PT_Deals_Sold'],
+      integers: ['Attendance', 'PT_Tickets_Sold'],
       decimals: [],
       currency: ['Est_Partner_Sharing', 'Est_LBA_Profit'],
       percent: [],
@@ -281,7 +281,7 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
       widths: [245, 390, 420],
       dropdowns: {}, checkboxes: [], integers: [], decimals: [], currency: [], percent: [], formulas: {},
       initialRows: [
-        ['Schema_Version', '2.0', 'Current inventory workbook schema version.'],
+        ['Schema_Version', '2.1', 'Current inventory workbook schema version.'],
         ['Inventory_Admin', 'bingo@lafayetteband.org', 'Administrative account for the LBA Bingo inventory system.'],
         ['Inventory_Start_Date', '', 'Go-live date for automated inventory tracking.'],
         ['Default_Usage_Window', '10', 'Default number of recent sessions used for moving usage averages.'],
@@ -293,6 +293,11 @@ const INVENTORY_SCHEMA_V1 = Object.freeze({
         ['Friday_Paperwork_Folder_ID', '', 'Active Friday session-paperwork folder.'],
         ['Sunday_Paperwork_Folder_ID', '', 'Active Sunday session-paperwork folder.'],
         ['Paperwork_Template_Folder_ID', '', 'Folder containing Bingo paperwork templates.'],
+        ['Session_Summary_Sheet_Name', 'Profit Estimate', 'Worksheet containing archived-session summary data.'],
+        ['Session_Attendance_Cell', 'D7', 'Cell containing total session attendance.'],
+        ['Session_PT_Tickets_Sold_Cell', 'C21', 'Cell containing total pull-tab tickets sold.'],
+        ['Session_Partner_Sharing_Cell', 'D34', 'Cell containing estimated partner sharing.'],
+        ['Session_LBA_Profit_Cell', 'D35', 'Cell containing estimated LBA profit.'],
       ],
     },
   }),

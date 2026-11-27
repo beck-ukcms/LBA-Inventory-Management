@@ -1,7 +1,7 @@
 /**
  * Sessions.js
  * Archived-session summaries and rolling dashboard analytics.
- * Current as of v2.0.
+ * Current as of v2.1.
  */
 const ARCHIVED_SESSIONS_SHEET = 'Sessions';
 const ARCHIVED_SESSION_TYPES = ['Thursday', 'Friday', 'Sunday'];
@@ -44,16 +44,13 @@ function buildArchivedSessionRecord_(context, inventoryResult, spreadsheet) {
   const salesByGame = Object.keys(suppliedSales).length
     ? Object.assign({}, suppliedSales)
     : getArchivedSessionPTSalesFromTransactions_(context.sessionId);
-  const totalPTDeals = Object.values(salesByGame).reduce((total, value) => {
-    return total + Number(value || 0);
-  }, 0);
   return {
     Session_ID: normalizeText_(context.sessionId),
     Session_Date: context.date,
     Session_Type: context.label,
     Archived_At: now_(),
     Attendance: summary.attendance,
-    PT_Deals_Sold: totalPTDeals,
+    PT_Tickets_Sold: summary.ptTicketsSold,
     Est_Partner_Sharing: summary.partnerSharing,
     Est_LBA_Profit: summary.lbaProfit,
     PT_Sales_By_Game_JSON: JSON.stringify(salesByGame),
@@ -61,17 +58,43 @@ function buildArchivedSessionRecord_(context, inventoryResult, spreadsheet) {
   };
 }
 
-function readArchivedSessionSummary_(spreadsheet) {
-  const sheet = spreadsheet.getSheetByName('Profit Estimate');
-  if (!sheet) {
-    throw new Error('Required worksheet Profit Estimate is missing.');
-  }
-  const values = sheet.getRange('D7:D35').getValues();
-  return {
-    attendance: values[0][0],
-    partnerSharing: values[27][0],
-    lbaProfit: values[28][0]
+function getRequiredSessionSummarySettings_() {
+  const settings = getSettingsMap_();
+  const keys = {
+    sheetName: ['Session_Summary_Sheet_Name', 'Profit Estimate'],
+    attendance: ['Session_Attendance_Cell', 'D7'],
+    ptTicketsSold: ['Session_PT_Tickets_Sold_Cell', 'C21'],
+    partnerSharing: ['Session_Partner_Sharing_Cell', 'D34'],
+    lbaProfit: ['Session_LBA_Profit_Cell', 'D35']
   };
+  const result = {};
+  Object.entries(keys).forEach(([name, definition]) => {
+    const value = normalizeText_(settings[definition[0]] || definition[1]);
+    if (!value) throw new Error(`Setting ${definition[0]} is required.`);
+    result[name] = value;
+  });
+  return result;
+}
+function readArchivedSessionSummary_(spreadsheet) {
+  const settings = getRequiredSessionSummarySettings_();
+  const sheet = spreadsheet.getSheetByName(settings.sheetName);
+  if (!sheet) throw new Error(`Required worksheet ${settings.sheetName} is missing.`);
+  let ranges;
+  try {
+    ranges = sheet.getRangeList([settings.attendance, settings.ptTicketsSold,
+      settings.partnerSharing, settings.lbaProfit]).getRanges();
+  } catch (error) {
+    throw new Error(`A configured session-summary cell is invalid: ${error.message}`);
+  }
+  const values = ranges.map((range) => range.getValue());
+  const labels = ['Attendance', 'PT Tickets Sold', 'Partner Sharing', 'LBA Profit'];
+  values.forEach((value, index) => {
+    if (value === '' || !Number.isFinite(Number(value)) || Number(value) < 0) {
+      throw new Error(`${labels[index]} must be a nonnegative number in ${settings.sheetName}.`);
+    }
+  });
+  return {attendance:Number(values[0]), ptTicketsSold:Number(values[1]),
+    partnerSharing:Number(values[2]), lbaProfit:Number(values[3])};
 }
 
 function appendArchivedSession_(record) {
